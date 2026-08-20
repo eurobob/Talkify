@@ -94,8 +94,12 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
     key(page: 0x0C, usage: 0x0044): .left,
     key(page: 0x0C, usage: 0x0045): .right,
     key(page: 0x0C, usage: 0x0080): .select,
-    key(page: 0x0C, usage: 0x0060): .back,
-    key(page: 0x01, usage: 0x0086): .tv,
+    // Named from the remote, not from the usage numbers. The Consumer
+    // "Data On Screen" usage is the TV button and Generic Desktop's
+    // "System App Menu" is Back, which is the opposite of what those names
+    // suggest. Confirmed against the physical remote on 2026-08-20.
+    key(page: 0x0C, usage: 0x0060): .tv,
+    key(page: 0x01, usage: 0x0086): .back,
     key(page: 0x0C, usage: 0x00CD): .playPause,
     key(page: 0x0C, usage: 0x00E2): .mute,
     key(page: 0x0C, usage: 0x00E9): .volumeUp,

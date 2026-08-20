@@ -294,6 +294,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case .none:
       break
     case .missionControl, .applicationWindows, .showDesktop, .spotlight, .sendKeys:
+      // Some of these the window server will not accept as a keystroke,
+      // however faithfully it is synthesised, and opens its own way instead.
+      if RemoteWindowAction.isHandledHere(action) {
+        RemoteWindowAction.run(action)
+        return
+      }
       guard let binding = action.keyBinding else { return }
       RemoteActionRunner.send(binding)
     }
