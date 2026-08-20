@@ -53,6 +53,35 @@ struct SiriRemoteSettingsView: View {
         .disabled(!settings.siriRemoteEnabled)
       }
 
+      SettingsCard(title: "Clickpad") {
+        SettingsRow(
+          title: "Move the pointer",
+          description: "Swipe the remote's clickpad to move the pointer, and "
+            + "press it to click. The pointer holds still while the pad is "
+            + "pressed, so a click lands where you aimed rather than where "
+            + "your finger slid to."
+        ) {
+          Toggle("Move the pointer", isOn: $settings.siriRemoteTrackpadEnabled)
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+
+        SettingsRow(
+          title: "Pointer speed",
+          description: "The slow end. A quick swipe is amplified on top of "
+            + "this, so a careful movement can still land on a button while a "
+            + "fast one crosses the screen."
+        ) {
+          Slider(
+            value: $settings.siriRemoteTrackpadSpeed,
+            in: 300...2000
+          )
+          .frame(width: 180)
+        }
+        .disabled(!settings.siriRemoteTrackpadEnabled)
+      }
+      .disabled(!settings.siriRemoteEnabled)
+
       SettingsCard(title: "Buttons") {
         SettingsRow(
           title: "What each button does",
@@ -82,6 +111,17 @@ struct SiriRemoteSettingsView: View {
             .foregroundStyle(.white.opacity(0.6))
         }
 
+        if settings.siriRemoteTrackpadEnabled {
+          SettingsRow(
+            title: SiriRemoteButtonMonitor.Button.select.title,
+            description: "Clicks, while the clickpad moves the pointer."
+          ) {
+            Text("Click")
+              .font(.system(size: 12, weight: .medium, design: .rounded))
+              .foregroundStyle(.white.opacity(0.6))
+          }
+        }
+
         ForEach(configurableButtons, id: \.self) { button in
           buttonRow(button)
         }
@@ -94,7 +134,13 @@ struct SiriRemoteSettingsView: View {
 
   /// Every button the user may bind. The Siri button is not one of them.
   private var configurableButtons: [SiriRemoteButtonMonitor.Button] {
-    SiriRemoteButtonMonitor.Button.allCases.filter { $0 != .siri }
+    SiriRemoteButtonMonitor.Button.allCases.filter { button in
+      // Siri always dictates. The clickpad's press is the click while the
+      // pointer is on, and binding it as well would fire both.
+      if button == .siri { return false }
+      if button == .select, settings.siriRemoteTrackpadEnabled { return false }
+      return true
+    }
   }
 
   @ViewBuilder

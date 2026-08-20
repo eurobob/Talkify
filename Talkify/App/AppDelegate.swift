@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var settingsWindowController: SettingsWindowController?
   private var usageTracker: UsageTracker?
   private var remoteButtonMonitor: SiriRemoteButtonMonitor?
+  private var remoteTouchpad: SiriRemoteTouchpad?
+  private let remoteCursor = RemoteCursor()
   private let settingsRuntimeState = SettingsRuntimeState()
   private let updaterService = SparkleUpdaterService()
 
@@ -188,6 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard settings.siriRemoteEnabled else {
       remoteButtonMonitor?.stop()
       remoteButtonMonitor = nil
+      remoteTouchpad?.stop()
+      remoteTouchpad = nil
       return
     }
     guard remoteButtonMonitor == nil else { return }
@@ -211,6 +215,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
+    remoteCursor.speed = settings.siriRemoteTrackpadSpeed
+
     let monitor = SiriRemoteButtonMonitor { [weak self] event in
       Task { @MainActor [weak self] in
         self?.handleRemoteButton(event)
@@ -218,6 +224,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     let result = monitor.start()
     remoteButtonMonitor = monitor
+
+    if settings.siriRemoteTrackpadEnabled {
+      let touchpad = SiriRemoteTouchpad { [weak self] touch in
+        Task { @MainActor [weak self] in
+          self?.remoteCursor.receive(touch)
+        }
+      }
+      let touchResult = touchpad.start()
+      remoteTouchpad = touchpad
+      if touchResult != .started {
+        RemoteInputLog.logger.error(
+          "clickpad unavailable: \(String(describing: touchResult), privacy: .public)"
+        )
+      }
+    }
 
     // Silence here is the worst outcome: the switch reads on, the remote
     // does nothing, and nothing on screen says why. Every failure has a
@@ -243,6 +264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard let settings else { return }
     withObservationTracking {
       _ = settings.siriRemoteEnabled
+      _ = settings.siriRemoteTrackpadEnabled
+      _ = settings.siriRemoteTrackpadSpeed
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         self?.applyRemoteInput()
@@ -283,6 +306,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Every other button acts on the way down only, so one press cannot run
     // its action twice.
     guard isPress else { return }
+
+    // The clickpad's press belongs to the pointer while the trackpad is
+    // on: it is the click, and freezing on it is what stops the pointer
+    // sliding out from under the thing being clicked.
+    if button == .select, settings.siriRemoteTrackpadEnabled {
+      remoteCursor.setPressed(isPress)
+      return
+    }
 
     let action = settings.siriRemoteButtonMap[button]
     RemoteInputLog.logger.info(
@@ -331,6 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    remoteTouchpad?.stop()
     remoteButtonMonitor?.stop()
     dictationController?.stop()
     // A transcript the HUD is still offering only exists in its staging folder,

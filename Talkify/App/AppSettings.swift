@@ -37,6 +37,8 @@ final class AppSettings {
     static let historyFolder = "dictationHistoryFolder"
     static let siriRemoteEnabled = "siriRemoteEnabled"
     static let siriRemoteButtonMap = "siriRemoteButtonMap"
+    static let siriRemoteTrackpad = "siriRemoteTrackpad"
+    static let siriRemoteTrackpadSpeed = "siriRemoteTrackpadSpeed"
   }
 
   @ObservationIgnored
@@ -96,6 +98,19 @@ final class AppSettings {
   /// it on.
   var siriRemoteEnabled: Bool {
     didSet { defaults.set(siriRemoteEnabled, forKey: Keys.siriRemoteEnabled) }
+  }
+
+  /// Whether the remote's clickpad moves the pointer. Off by default: it
+  /// reads the pad through a private framework, and taking over the pointer
+  /// is not something to start doing unasked.
+  var siriRemoteTrackpadEnabled: Bool {
+    didSet { defaults.set(siriRemoteTrackpadEnabled, forKey: Keys.siriRemoteTrackpad) }
+  }
+
+  /// How far the pointer travels for a given finger movement. Acceleration
+  /// is applied on top, so this sets the slow end rather than the top speed.
+  var siriRemoteTrackpadSpeed: Double {
+    didSet { defaults.set(siriRemoteTrackpadSpeed, forKey: Keys.siriRemoteTrackpadSpeed) }
   }
 
   /// What each Siri Remote button does. Buttons left on "Leave to macOS"
@@ -236,6 +251,9 @@ final class AppSettings {
     siriRemoteEnabled = defaults.object(forKey: Keys.siriRemoteEnabled) as? Bool ?? false
     siriRemoteButtonMap = defaults.string(forKey: Keys.siriRemoteButtonMap)
       .flatMap(RemoteButtonMap.init(json:)) ?? .standard
+    siriRemoteTrackpadEnabled = defaults.object(forKey: Keys.siriRemoteTrackpad) as? Bool ?? false
+    let storedSpeed = defaults.object(forKey: Keys.siriRemoteTrackpadSpeed) as? Double
+    siriRemoteTrackpadSpeed = storedSpeed ?? 900
     dictationHistoryFolder = (defaults.string(forKey: Keys.historyFolder)).map { URL(filePath: $0) }
     voiceVisual = Self.stored(in: defaults, key: Keys.voiceVisual) ?? .waveform
     waveformStyle = Self.stored(in: defaults, key: Keys.waveformStyle) ?? .chartLine
