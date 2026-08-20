@@ -440,18 +440,15 @@ final class DirectDictationController {
       return
     }
 
-    // Read on the main actor, before the task: the setting is observable
-    // state and the session task is not isolated to it.
-    let inputDeviceName = activeSource == .siriRemote
-      ? settings.siriRemoteInputDeviceName
-      : nil
+    let inputSource: DictationInputSource =
+      activeSource == .siriRemote ? .siriRemote : .microphone
 
     sessionStartTask = Task { [weak self] in
       guard let self else { return }
       do {
         try await dependencies.startRecognition(
           locale,
-          inputDeviceName,
+          inputSource,
           { [weak self] update in
             Task { @MainActor [weak self] in
               self?.receive(update)

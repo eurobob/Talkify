@@ -36,7 +36,6 @@ final class AppSettings {
     static let historyEnabled = "dictationHistoryEnabled"
     static let historyFolder = "dictationHistoryFolder"
     static let siriRemoteEnabled = "siriRemoteEnabled"
-    static let siriRemoteInputDevice = "siriRemoteInputDevice"
     static let siriRemoteButtonMap = "siriRemoteButtonMap"
   }
 
@@ -97,14 +96,6 @@ final class AppSettings {
   /// it on.
   var siriRemoteEnabled: Bool {
     didSet { defaults.set(siriRemoteEnabled, forKey: Keys.siriRemoteEnabled) }
-  }
-
-  /// The input device a remote-started session records from. macOS does not
-  /// publish the remote's microphone itself, so this names the device a
-  /// bridge process publishes on its behalf. A name that matches nothing
-  /// falls back to the system default rather than failing the session.
-  var siriRemoteInputDeviceName: String {
-    didSet { defaults.set(siriRemoteInputDeviceName, forKey: Keys.siriRemoteInputDevice) }
   }
 
   /// What each Siri Remote button does. Buttons left on "Leave to macOS"
@@ -231,11 +222,6 @@ final class AppSettings {
   /// cannot start a session.
   var isRecordingKeybind = false
 
-  /// The device name the GoatRemote bridge publishes. It is only a default:
-  /// any bridge that publishes an input device works, and the user can
-  /// name a different one.
-  static let defaultSiriRemoteInputDeviceName = "Siri Remote Mic"
-
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
     soundSet = Self.stored(in: defaults, key: Keys.soundSet) ?? .synth8
@@ -248,8 +234,6 @@ final class AppSettings {
     insertionDestination = Self.stored(in: defaults, key: Keys.insertionDestination) ?? .insert
     dictationHistoryEnabled = defaults.object(forKey: Keys.historyEnabled) as? Bool ?? false
     siriRemoteEnabled = defaults.object(forKey: Keys.siriRemoteEnabled) as? Bool ?? false
-    siriRemoteInputDeviceName = defaults.string(forKey: Keys.siriRemoteInputDevice)
-      ?? AppSettings.defaultSiriRemoteInputDeviceName
     siriRemoteButtonMap = defaults.string(forKey: Keys.siriRemoteButtonMap)
       .flatMap(RemoteButtonMap.init(json:)) ?? .standard
     dictationHistoryFolder = (defaults.string(forKey: Keys.historyFolder)).map { URL(filePath: $0) }
