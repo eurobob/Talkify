@@ -196,8 +196,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self?.handleRemoteButton(event)
       }
     }
-    monitor.start()
+    let result = monitor.start()
     remoteButtonMonitor = monitor
+
+    // Silence here is the worst outcome: the switch reads on, the remote
+    // does nothing, and nothing on screen says why. Every failure has a
+    // different fix, so each one names itself.
+    guard result != .started else { return }
+    hudController?.showMessage(Self.message(for: result), on: nil)
+  }
+
+  private static func message(for result: SiriRemoteButtonMonitor.StartResult) -> String {
+    switch result {
+    case .started:
+      "Siri Remote ready"
+    case .permissionDenied:
+      "Talkify needs Input Monitoring for the Siri Remote"
+    case .buttonsHeldByAnotherApp:
+      "Another app holds the Siri Remote's buttons"
+    case .noRemoteFound:
+      "No Siri Remote found — wake it and try again"
+    }
   }
 
   private func observeRemoteInput() {

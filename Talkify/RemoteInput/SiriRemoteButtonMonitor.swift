@@ -42,10 +42,28 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
     case released(Button)
   }
 
+  /// Why the buttons are not arriving. Every case is worth telling the user
+  /// about: each one leaves the remote silent, and none of them is
+  /// something the user can see for themselves.
+  enum StartResult: Sendable, Equatable {
+    case started
+    /// macOS refused the device. In practice: no Input Monitoring.
+    case permissionDenied
+    /// Another running app holds the button interface. BetterTouchTool and
+    /// GoatRemote both do this when they are configured for the remote.
+    case buttonsHeldByAnotherApp
+    /// No remote is paired, or it is asleep and has not reconnected.
+    case noRemoteFound
+  }
+
   /// Apple's vendor, and the product of the third-generation remote
   /// (A2854). Earlier remotes report a different product and are untested.
   private static let vendorID = 0x004C
   private static let productID = 0x0315
+
+  /// The one interface that carries the buttons.
+  private static let buttonUsagePage = 0x0C
+  private static let buttonUsage = 0x01
 
   /// Measured on an A2854 on 2026-08-20. The clickpad reports its four
   /// edges as Consumer menu directions, and its click as Selection.
@@ -73,6 +91,11 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
   private let stateLock = NSLock()
 
   private var manager: IOHIDManager?
+  /// The interfaces this monitor has opened and scheduled. Identity, not
+  /// usage, because a remote that sleeps and reconnects presents new
+  /// device objects for the same seven interfaces and every one of them
+  /// must be registered again.
+  private var openDevices: [IOHIDDevice] = []
   /// Which buttons are down, so a repeated report cannot open a second
   /// session under the first one.
   private var heldButtons: Set<Button> = []
@@ -85,14 +108,15 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
     stop()
   }
 
-  /// Opens the remote and starts to report presses. Returns false when
-  /// macOS refuses the device, which in practice means the Input
-  /// Monitoring permission is missing.
+  /// Opens the remote and starts to report presses.
   ///
-  /// A remote that is asleep or out of range is not a failure: the manager
-  /// matches it whenever it comes back, so start() still returns true.
+  /// Every interface is opened on its own rather than through the manager.
+  /// `IOHIDManagerOpen` reports failure when any single matched interface
+  /// is held by another process, and the remote has seven: reading that
+  /// one result as fatal throws away six working interfaces and, worse,
+  /// gives no clue which one was the problem.
   @discardableResult
-  func start() -> Bool {
+  func start() -> StartResult {
     stop()
 
     let manager = IOHIDManagerCreate(
@@ -105,48 +129,132 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
     ]
     IOHIDManagerSetDeviceMatching(manager, matching as CFDictionary)
 
-    guard IOHIDManagerOpen(
-      manager,
-      IOOptionBits(kIOHIDOptionsTypeNone)
-    ) == kIOReturnSuccess else {
-      return false
-    }
-
     let context = Unmanaged.passUnretained(self).toOpaque()
-    IOHIDManagerRegisterInputValueCallback(manager, { context, _, _, value in
+    // A remote that wakes from sleep arrives here, which is the normal way
+    // it comes back: the link drops whenever the remote idles.
+    IOHIDManagerRegisterDeviceMatchingCallback(manager, { context, _, _, device in
+      guard let context else { return }
+      _ = Unmanaged<SiriRemoteButtonMonitor>
+        .fromOpaque(context)
+        .takeUnretainedValue()
+        .register(device)
+    }, context)
+    IOHIDManagerRegisterDeviceRemovalCallback(manager, { context, _, _, device in
       guard let context else { return }
       Unmanaged<SiriRemoteButtonMonitor>
         .fromOpaque(context)
         .takeUnretainedValue()
-        .receive(value)
+        .forget(device)
     }, context)
 
+    let managerOpen = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     IOHIDManagerScheduleWithRunLoop(
       manager,
       CFRunLoopGetMain(),
       CFRunLoopMode.commonModes.rawValue
     )
-
     stateLock.withLock { self.manager = manager }
-    return true
+
+    let devices = (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>) ?? []
+    guard !devices.isEmpty else {
+      return managerOpen == kIOReturnNotPermitted ? .permissionDenied : .noRemoteFound
+    }
+
+    var buttonResult: IOReturn?
+    for device in devices {
+      let result = register(device)
+      if isButtonInterface(device) {
+        buttonResult = result
+      }
+    }
+
+    switch buttonResult {
+    case kIOReturnSuccess: return .started
+    case kIOReturnNotPermitted: return .permissionDenied
+    case kIOReturnExclusiveAccess: return .buttonsHeldByAnotherApp
+    case nil: return .noRemoteFound
+    default:
+      return managerOpen == kIOReturnNotPermitted ? .permissionDenied : .noRemoteFound
+    }
   }
 
   func stop() {
-    let manager = stateLock.withLock { () -> IOHIDManager? in
+    let (manager, devices) = stateLock.withLock { () -> (IOHIDManager?, [IOHIDDevice]) in
       let current = self.manager
+      let open = openDevices
       self.manager = nil
+      openDevices = []
       heldButtons.removeAll()
-      return current
+      return (current, open)
+    }
+
+    for device in devices {
+      IOHIDDeviceRegisterInputValueCallback(device, nil, nil)
+      IOHIDDeviceUnscheduleFromRunLoop(
+        device,
+        CFRunLoopGetMain(),
+        CFRunLoopMode.commonModes.rawValue
+      )
+      IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
     }
 
     guard let manager else { return }
-    IOHIDManagerRegisterInputValueCallback(manager, nil, nil)
+    IOHIDManagerRegisterDeviceMatchingCallback(manager, nil, nil)
+    IOHIDManagerRegisterDeviceRemovalCallback(manager, nil, nil)
     IOHIDManagerUnscheduleFromRunLoop(
       manager,
       CFRunLoopGetMain(),
       CFRunLoopMode.commonModes.rawValue
     )
     IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+  }
+
+  /// Opens one interface and starts to read it. Doing this twice for the
+  /// same interface is harmless and expected: the matching callback fires
+  /// for interfaces the first enumeration already found.
+  @discardableResult
+  private func register(_ device: IOHIDDevice) -> IOReturn {
+    let isNew = stateLock.withLock { () -> Bool in
+      guard !openDevices.contains(where: { $0 === device }) else { return false }
+      return true
+    }
+    guard isNew else { return kIOReturnSuccess }
+
+    let result = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
+    guard result == kIOReturnSuccess else { return result }
+
+    let context = Unmanaged.passUnretained(self).toOpaque()
+    IOHIDDeviceRegisterInputValueCallback(device, { context, _, _, value in
+      guard let context else { return }
+      Unmanaged<SiriRemoteButtonMonitor>
+        .fromOpaque(context)
+        .takeUnretainedValue()
+        .receive(value)
+    }, context)
+    IOHIDDeviceScheduleWithRunLoop(
+      device,
+      CFRunLoopGetMain(),
+      CFRunLoopMode.commonModes.rawValue
+    )
+
+    stateLock.withLock { openDevices.append(device) }
+    return kIOReturnSuccess
+  }
+
+  /// A remote that sleeps takes its interfaces with it. Any button still
+  /// marked down would otherwise stay down forever, and the next press of
+  /// it would be swallowed as a repeat.
+  private func forget(_ device: IOHIDDevice) {
+    stateLock.withLock {
+      openDevices.removeAll { $0 === device }
+      heldButtons.removeAll()
+    }
+  }
+
+  private func isButtonInterface(_ device: IOHIDDevice) -> Bool {
+    let page = IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsagePageKey as CFString) as? Int
+    let usage = IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsageKey as CFString) as? Int
+    return page == Self.buttonUsagePage && usage == Self.buttonUsage
   }
 
   private func receive(_ value: IOHIDValue) {
