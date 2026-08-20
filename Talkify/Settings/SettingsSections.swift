@@ -16,6 +16,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case appearance
   case sounds
   case dictation
+  case siriRemote
   case dropTranscription
   case readAloud
   case language
@@ -31,6 +32,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .appearance: "Appearance"
     case .sounds: "Sounds"
     case .dictation: "Dictation"
+    case .siriRemote: "Siri Remote"
     case .dropTranscription: "Drop Transcription"
     case .readAloud: "Read Aloud"
     case .language: "Language"
@@ -45,6 +47,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .appearance: "Customize the Direct Dictation HUD"
     case .sounds: "Choose and preview the session sounds"
     case .dictation: "Choose where finished dictation text goes"
+    case .siriRemote: "Dictate and drive the Mac from the remote"
     case .dropTranscription: "Transcribe audio and video files"
     case .readAloud: "Choose the voice that reads selected text"
     case .language: "Pick your dictation languages and their keys"
@@ -59,6 +62,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .appearance: "sparkles"
     case .sounds: "waveform"
     case .dictation: "text.cursor"
+    case .siriRemote: "av.remote"
     case .dropTranscription: "square.and.arrow.down"
     case .readAloud: "speaker.wave.2"
     case .language: "globe"

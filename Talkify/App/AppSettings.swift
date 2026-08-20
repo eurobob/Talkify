@@ -37,6 +37,7 @@ final class AppSettings {
     static let historyFolder = "dictationHistoryFolder"
     static let siriRemoteEnabled = "siriRemoteEnabled"
     static let siriRemoteInputDevice = "siriRemoteInputDevice"
+    static let siriRemoteButtonMap = "siriRemoteButtonMap"
   }
 
   @ObservationIgnored
@@ -104,6 +105,13 @@ final class AppSettings {
   /// falls back to the system default rather than failing the session.
   var siriRemoteInputDeviceName: String {
     didSet { defaults.set(siriRemoteInputDeviceName, forKey: Keys.siriRemoteInputDevice) }
+  }
+
+  /// What each Siri Remote button does. Buttons left on "Leave to macOS"
+  /// keep working the way they always did, because the app reads the remote
+  /// without seizing it.
+  var siriRemoteButtonMap: RemoteButtonMap {
+    didSet { defaults.set(siriRemoteButtonMap.json, forKey: Keys.siriRemoteButtonMap) }
   }
 
   /// The history folder, kept even while history is off so turning it back
@@ -242,6 +250,8 @@ final class AppSettings {
     siriRemoteEnabled = defaults.object(forKey: Keys.siriRemoteEnabled) as? Bool ?? false
     siriRemoteInputDeviceName = defaults.string(forKey: Keys.siriRemoteInputDevice)
       ?? AppSettings.defaultSiriRemoteInputDeviceName
+    siriRemoteButtonMap = defaults.string(forKey: Keys.siriRemoteButtonMap)
+      .flatMap(RemoteButtonMap.init(json:)) ?? .standard
     dictationHistoryFolder = (defaults.string(forKey: Keys.historyFolder)).map { URL(filePath: $0) }
     voiceVisual = Self.stored(in: defaults, key: Keys.voiceVisual) ?? .waveform
     waveformStyle = Self.stored(in: defaults, key: Keys.waveformStyle) ?? .chartLine

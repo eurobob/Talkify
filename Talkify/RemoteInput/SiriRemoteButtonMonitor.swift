@@ -20,8 +20,9 @@ import IOKit.hid
 /// The device needs the Input Monitoring permission, which the event tap
 /// already requires.
 final class SiriRemoteButtonMonitor: @unchecked Sendable {
-  /// A button on the remote, named as the case on the device reads.
-  enum Button: Sendable, Hashable, CaseIterable {
+  /// A button on the remote, named as the case on the device reads. The
+  /// raw values are stored in the button map, so they must not change.
+  enum Button: String, Sendable, Hashable, CaseIterable, Codable {
     case up
     case down
     case left
@@ -35,6 +36,25 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
     case volumeDown
     case power
     case siri
+
+    /// What the button is called on the device, for the Settings list.
+    var title: String {
+      switch self {
+      case .up: "Clickpad up"
+      case .down: "Clickpad down"
+      case .left: "Clickpad left"
+      case .right: "Clickpad right"
+      case .select: "Clickpad press"
+      case .back: "Back"
+      case .tv: "TV"
+      case .playPause: "Play / Pause"
+      case .mute: "Mute"
+      case .volumeUp: "Volume up"
+      case .volumeDown: "Volume down"
+      case .power: "Power"
+      case .siri: "Siri"
+      }
+    }
   }
 
   enum Event: Sendable {

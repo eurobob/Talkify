@@ -231,19 +231,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  /// The remote's fixed mapping: hold the side button to dictate, press
-  /// Back to throw the session away. Every other button stays with macOS.
+  /// Runs whatever the user bound to the button that moved.
+  ///
+  /// A release only matters to hold-to-talk. Everything else happens once,
+  /// on the way down, so a bound button cannot fire twice per press.
   private func handleRemoteButton(_ event: SiriRemoteButtonMonitor.Event) {
-    guard let dictationController else { return }
+    guard let settings, let dictationController else { return }
+
+    let button: SiriRemoteButtonMonitor.Button
+    let isPress: Bool
     switch event {
-    case .pressed(.siri):
-      dictationController.handle(.triggerPressed(.primary), source: .siriRemote)
-    case .released(.siri):
-      dictationController.handle(.triggerReleased(.primary), source: .siriRemote)
-    case .pressed(.back):
+    case let .pressed(pressedButton):
+      button = pressedButton
+      isPress = true
+    case let .released(releasedButton):
+      button = releasedButton
+      isPress = false
+    }
+
+    let action = settings.siriRemoteButtonMap[button]
+    guard isPress || action.needsRelease else { return }
+
+    switch action {
+    case .dictateHold:
+      dictationController.handle(
+        isPress ? .triggerPressed(.primary) : .triggerReleased(.primary),
+        source: .siriRemote
+      )
+    case .dictateToggle:
+      dictationController.toggleFromMenu()
+    case .cancelDictation:
       dictationController.handle(.cancelPressed, source: .siriRemote)
-    default:
+    case .readAloud:
+      readAloudController?.toggle()
+    case .none:
       break
+    case .missionControl, .applicationWindows, .showDesktop, .spotlight:
+      RemoteActionRunner.run(action)
     }
   }
 

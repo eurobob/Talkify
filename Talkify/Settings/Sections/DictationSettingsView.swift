@@ -9,9 +9,6 @@ struct DictationSettingsView: View {
 
   private let historyStore = DictationHistoryStore()
   @State private var isConfirmingClear = false
-  /// Read once when the section appears. Enumerating CoreAudio on every
-  /// redraw would hit the hardware for a list that changes rarely.
-  @State private var inputDeviceNames: [String] = []
 
   var body: some View {
     VStack(spacing: 16) {
@@ -26,31 +23,6 @@ struct DictationSettingsView: View {
           optionLabel: { $0.title },
           selection: $settings.insertionDestination
         )
-      }
-
-      SettingsCard(title: "Siri Remote") {
-        SettingsRow(
-          title: "Dictate from the Siri Remote",
-          description: "Hold the remote's Siri button to dictate, and press "
-            + "Back to throw the take away. Needs Input Monitoring, the same "
-            + "permission the keyboard trigger uses."
-        ) {
-          Toggle("Dictate from the Siri Remote", isOn: $settings.siriRemoteEnabled)
-            .labelsHidden()
-            .toggleStyle(.switch)
-        }
-
-        SettingsPickerRow(
-          title: "Remote microphone",
-          description: "macOS does not publish the remote's microphone, so a "
-            + "bridge process publishes it under this name. Sessions the "
-            + "keyboard starts are unaffected and keep the system default.",
-          options: inputDeviceNames,
-          optionLabel: { $0 },
-          selection: $settings.siriRemoteInputDeviceName,
-          controlWidth: 200
-        )
-        .disabled(!settings.siriRemoteEnabled)
       }
 
       SettingsCard(title: "History") {
@@ -93,18 +65,6 @@ struct DictationSettingsView: View {
       Text("This deletes every daily history file Talkify wrote to the "
         + "history folder. It cannot be undone.")
     }
-    .onAppear { reloadInputDevices() }
-  }
-
-  /// The stored pick is kept in the list even when its device is absent,
-  /// which is the normal state while the bridge is not running. Dropping it
-  /// would leave the picker blank and silently rewrite the user's choice.
-  private func reloadInputDevices() {
-    var names = AudioInputDevice.available().map(\.name)
-    if !names.contains(settings.siriRemoteInputDeviceName) {
-      names.append(settings.siriRemoteInputDeviceName)
-    }
-    inputDeviceNames = names
   }
 
   private func chooseFolder() {

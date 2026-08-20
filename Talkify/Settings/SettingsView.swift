@@ -246,6 +246,8 @@ private struct SettingsContent: View {
           SoundsSettingsView(settings: settings, sounds: sounds)
         case .dictation:
           DictationSettingsView(settings: settings)
+        case .siriRemote:
+          SiriRemoteSettingsView(settings: settings)
         case .dropTranscription:
           DropTranscriptionSettingsView(settings: settings)
         case .readAloud:
