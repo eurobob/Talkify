@@ -1,8 +1,18 @@
+import CoreGraphics
+import Foundation
 import Testing
 
 @testable import Talkify
 
 struct RemoteButtonMapTests {
+  private let cmdShiftFour = KeyBinding(
+    keyCode: 21,
+    modifierFlags: CGEventFlags.maskCommand.rawValue | CGEventFlags.maskShift.rawValue,
+    isModifierKey: false,
+    label: "⌘ ⇧ 4",
+    keyEquivalent: "4"
+  )
+
   @Test func theStandardMapDictatesFromSiriAndCancelsFromBack() {
     let map = RemoteButtonMap.standard
     #expect(map[.siri] == .dictateHold)
@@ -20,29 +30,39 @@ struct RemoteButtonMapTests {
     }
   }
 
-  @Test func aChangedMapSurvivesItsJSONRoundTrip() {
+  @Test func aRecordedCombinationSurvivesItsJSONRoundTrip() {
     var map = RemoteButtonMap.standard
-    map[.playPause] = .missionControl
-    map[.tv] = .spotlight
+    map[.playPause] = .sendKeys(cmdShiftFour)
+    map[.tv] = .readAloud
 
     let restored = RemoteButtonMap(json: map.json)
     #expect(restored == map)
-    #expect(restored?[.playPause] == .missionControl)
-    #expect(restored?[.tv] == .spotlight)
+    #expect(restored?[.playPause].keyBinding == cmdShiftFour)
+    #expect(restored?[.tv] == .readAloud)
   }
 
-  /// A map written by a build that knew more buttons or more actions must
-  /// lose only the parts this build cannot name, never fail to load.
-  @Test func anUnknownButtonOrActionIsDroppedRatherThanFailingTheMap() {
-    let json = """
-    {"siri":"dictateHold","teleport":"dictateHold","tv":"summonADragon"}
-    """
-    let map = RemoteButtonMap(json: json)
-    #expect(map?[.siri] == .dictateHold)
+  /// A map written by a build that knew more buttons must lose only the
+  /// parts this build cannot name, never fail to load.
+  @Test func anUnknownButtonIsDroppedRatherThanFailingTheMap() {
+    var map = RemoteButtonMap.standard
+    map[.tv] = .sendKeys(cmdShiftFour)
+    let json = map.json.replacingOccurrences(of: "\"tv\"", with: "\"teleport\"")
+
+    let restored = RemoteButtonMap(json: json)
+    #expect(restored?[.siri] == .dictateHold)
     // Spelled out: a bare `.none` here reads as Optional.none, which would
     // assert the whole map failed to load rather than that this one button
     // is unbound.
-    #expect(map?[.tv] == RemoteButtonAction.none)
+    #expect(restored?[.tv] == RemoteButtonAction.none)
+  }
+
+  /// Send-keys with nothing recorded would be a button that claims to do
+  /// something and does nothing.
+  @Test func sendKeysWithoutACombinationIsDropped() {
+    let json = #"{"tv":{"kind":"sendKeys"},"siri":{"kind":"dictateHold"}}"#
+    let restored = RemoteButtonMap(json: json)
+    #expect(restored?[.siri] == .dictateHold)
+    #expect(restored?[.tv] == RemoteButtonAction.none)
   }
 
   @Test func malformedJSONLoadsNothingSoTheDefaultCanTakeOver() {
@@ -52,8 +72,25 @@ struct RemoteButtonMapTests {
   /// Only hold-to-talk cares about the release. If another action did, one
   /// press would run it twice.
   @Test func onlyHoldToTalkActsOnTheRelease() {
-    for action in RemoteButtonAction.allCases {
+    let actions: [RemoteButtonAction] = [
+      .none, .dictateHold, .dictateToggle, .cancelDictation, .readAloud,
+      .sendKeys(cmdShiftFour),
+    ]
+    for action in actions {
       #expect(action.needsRelease == (action == .dictateHold))
     }
+  }
+
+  /// Switching a button to another action and back must not make the user
+  /// record the same combination twice.
+  @Test func switchingKindAwayAndBackKeepsTheRecordedCombination() {
+    let sending = RemoteButtonAction.sendKeys(cmdShiftFour)
+    let parked = sending.withKind(.readAloud, recorded: cmdShiftFour)
+    #expect(parked == .readAloud)
+
+    // The view passes the button's own recording back in, which is what
+    // makes the combination survive the detour.
+    let returned = sending.withKind(.sendKeys, recorded: .optionEscape)
+    #expect(returned.keyBinding == cmdShiftFour)
   }
 }

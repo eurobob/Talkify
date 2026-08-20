@@ -264,10 +264,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       dictationController.handle(.cancelPressed, source: .siriRemote)
     case .readAloud:
       readAloudController?.toggle()
+    case let .sendKeys(binding):
+      RemoteActionRunner.send(binding)
     case .none:
       break
-    case .missionControl, .applicationWindows, .showDesktop, .spotlight:
-      RemoteActionRunner.run(action)
     }
   }
 
