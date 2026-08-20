@@ -73,7 +73,7 @@ struct DirectDictationControllerTests {
       supportedLocale: { _ in nil },
       retainOnly: { _ in },
       prewarm: { _ in prewarmed.withLock { $0 = true } },
-      startRecognition: { locale, _, _, _ in
+      startRecognition: { locale, _, _, _, _ in
         startEntries.withLock { $0 += 1 }
         try await startRecognitionBody?(locale)
       },
@@ -224,6 +224,41 @@ struct DirectDictationControllerTests {
     }
 
     #expect(recorder.listeningLatched == [true])
+    controller.stop()
+  }
+
+  /// The remote and the keyboard record from different microphones, so a
+  /// session belongs to whichever one opened it. A keyboard release that
+  /// ended a remote session would cut the user off mid-sentence.
+  @Test func aKeyboardReleaseCannotEndARemoteSession() async {
+    let recorder = Recorder()
+    let prewarmed = OSAllocatedUnfairLock(initialState: false)
+    let controller = makeController(
+      dependencies: makeDependencies(recorder: recorder, prewarmed: prewarmed)
+    )
+    await prepare(controller, prewarmed: prewarmed)
+
+    func isHeldRecording() -> Bool {
+      if case .recording(.held) = controller.sessionStateForTesting { return true }
+      return false
+    }
+
+    controller.handle(.triggerPressed(.primary), source: .siriRemote)
+    await waitUntil("Remote session never reached a held recording") {
+      isHeldRecording()
+    }
+
+    // A release inside the tap threshold latches, so a keyboard release the
+    // controller wrongly accepted would show as a latched state. The
+    // session must stay held.
+    controller.handle(.triggerReleased(.primary), source: .keyboard)
+    #expect(isHeldRecording())
+
+    // The remote's own release is accepted, and this one is quick enough
+    // to latch.
+    controller.handle(.triggerReleased(.primary), source: .siriRemote)
+    #expect(controller.sessionStateForTesting == .recording(.latched))
+
     controller.stop()
   }
 

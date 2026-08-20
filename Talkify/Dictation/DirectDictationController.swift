@@ -44,6 +44,9 @@ final class DirectDictationController {
   /// Which slot's key began the session in flight, so the session runs in
   /// the language of the key that started it even if Settings change.
   private var activeSlot: GlobalKeyEventMonitor.TriggerSlot = .primary
+  /// Which trigger opened the running session, so the right microphone is
+  /// chosen and the other source cannot end it.
+  private var activeSource: TriggerSource = .keyboard
 
   convenience init(
     settings: AppSettings,
@@ -297,20 +300,33 @@ final class DirectDictationController {
   /// controller's effects produce.
   var sessionStateForTesting: DictationSessionMachine.State { machine.state }
 
-  func handle(_ event: GlobalKeyEventMonitor.Event) {
+  /// Where a trigger came from. The two sources record from different
+  /// microphones, so the session remembers which one opened it.
+  enum TriggerSource: Sendable, Hashable {
+    case keyboard
+    case siriRemote
+  }
+
+  func handle(_ event: GlobalKeyEventMonitor.Event, source: TriggerSource = .keyboard) {
     switch event {
     case let .triggerPressed(slot):
       // While a session runs, only the key that started it controls it. The
       // other language's key is inert until this session ends, so a latched
       // German session cannot be stopped by the English key.
+      //
+      // The source is latched by the same rule and for the same reason: a
+      // session that records from the remote's microphone must not be
+      // stopped by the keyboard, which would end a recording the user is
+      // still speaking into.
       if machine.isSessionActive {
-        guard slot == activeSlot else { return }
+        guard slot == activeSlot, source == activeSource else { return }
       } else {
         activeSlot = slot
+        activeSource = source
       }
       send(.triggerPressed(now: .now))
     case let .triggerReleased(slot):
-      guard slot == activeSlot else { return }
+      guard slot == activeSlot, source == activeSource else { return }
       send(.triggerReleased(now: .now))
     case .cancelPressed:
       send(.escapePressed)
@@ -424,11 +440,18 @@ final class DirectDictationController {
       return
     }
 
+    // Read on the main actor, before the task: the setting is observable
+    // state and the session task is not isolated to it.
+    let inputDeviceName = activeSource == .siriRemote
+      ? settings.siriRemoteInputDeviceName
+      : nil
+
     sessionStartTask = Task { [weak self] in
       guard let self else { return }
       do {
         try await dependencies.startRecognition(
           locale,
+          inputDeviceName,
           { [weak self] update in
             Task { @MainActor [weak self] in
               self?.receive(update)

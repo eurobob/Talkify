@@ -15,8 +15,12 @@ extension DirectDictationController {
     let supportedLocale: @Sendable (String) async -> Locale?
     let retainOnly: @Sendable ([Locale]) async -> Void
     let prewarm: @Sendable (Locale) async throws -> Void
+    /// `inputDeviceName` names the microphone this session must use, or is
+    /// nil for the system default. The Siri Remote sets it; the keyboard
+    /// trigger leaves it nil.
     let startRecognition: @Sendable (
       Locale,
+      _ inputDeviceName: String?,
       _ updateHandler: @escaping @Sendable (SpeechRecognitionService.Update) -> Void,
       _ failureHandler: @escaping @Sendable (String) -> Void,
       _ levelHandler: @escaping @Sendable (Float) -> Void
@@ -85,9 +89,11 @@ extension DirectDictationController {
         supportedLocale: { await speechService.supportedLocale(identifier: $0) },
         retainOnly: { await speechService.retainOnly(locales: $0) },
         prewarm: { try await speechService.prewarm(locale: $0) },
-        startRecognition: { locale, updateHandler, failureHandler, levelHandler in
+        startRecognition: {
+          locale, inputDeviceName, updateHandler, failureHandler, levelHandler in
           try await speechService.start(
             locale: locale,
+            inputDeviceName: inputDeviceName,
             updateHandler: updateHandler,
             failureHandler: failureHandler,
             levelHandler: levelHandler

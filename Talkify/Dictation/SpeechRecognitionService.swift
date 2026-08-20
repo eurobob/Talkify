@@ -201,6 +201,7 @@ actor SpeechRecognitionService {
 
   func start(
     locale: Locale,
+    inputDeviceName: String? = nil,
     updateHandler: @escaping @Sendable (Update) -> Void,
     failureHandler: @escaping @Sendable (String) -> Void,
     levelHandler: (@Sendable (Float) -> Void)? = nil
@@ -247,7 +248,10 @@ actor SpeechRecognitionService {
       // stream. Bluetooth inputs can take hundreds of milliseconds to become
       // ready, and the stream keeps those early buffers until the analyzer
       // starts consuming them.
-      try input.start(outputFormat: prepared.audioFormat)
+      try input.start(
+        outputFormat: prepared.audioFormat,
+        preferredDeviceName: inputDeviceName
+      )
       try Task.checkCancellation()
       try await prepared.analyzer.start(inputSequence: stream)
       try Task.checkCancellation()

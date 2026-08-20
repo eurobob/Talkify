@@ -35,6 +35,8 @@ final class AppSettings {
     static let insertionDestination = "dictationInsertionDestination"
     static let historyEnabled = "dictationHistoryEnabled"
     static let historyFolder = "dictationHistoryFolder"
+    static let siriRemoteEnabled = "siriRemoteEnabled"
+    static let siriRemoteInputDevice = "siriRemoteInputDevice"
   }
 
   @ObservationIgnored
@@ -87,6 +89,21 @@ final class AppSettings {
   /// and only the user turns this on.
   var dictationHistoryEnabled: Bool {
     didSet { defaults.set(dictationHistoryEnabled, forKey: Keys.historyEnabled) }
+  }
+
+  /// Whether the Siri Remote drives dictation. Off by default: the monitor
+  /// opens a HID device and needs Input Monitoring, so only the user turns
+  /// it on.
+  var siriRemoteEnabled: Bool {
+    didSet { defaults.set(siriRemoteEnabled, forKey: Keys.siriRemoteEnabled) }
+  }
+
+  /// The input device a remote-started session records from. macOS does not
+  /// publish the remote's microphone itself, so this names the device a
+  /// bridge process publishes on its behalf. A name that matches nothing
+  /// falls back to the system default rather than failing the session.
+  var siriRemoteInputDeviceName: String {
+    didSet { defaults.set(siriRemoteInputDeviceName, forKey: Keys.siriRemoteInputDevice) }
   }
 
   /// The history folder, kept even while history is off so turning it back
@@ -206,6 +223,11 @@ final class AppSettings {
   /// cannot start a session.
   var isRecordingKeybind = false
 
+  /// The device name the GoatRemote bridge publishes. It is only a default:
+  /// any bridge that publishes an input device works, and the user can
+  /// name a different one.
+  static let defaultSiriRemoteInputDeviceName = "Siri Remote Mic"
+
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
     soundSet = Self.stored(in: defaults, key: Keys.soundSet) ?? .synth8
@@ -217,6 +239,9 @@ final class AppSettings {
     transcriptFolder = (defaults.string(forKey: Keys.transcriptFolder)).map { URL(filePath: $0) }
     insertionDestination = Self.stored(in: defaults, key: Keys.insertionDestination) ?? .insert
     dictationHistoryEnabled = defaults.object(forKey: Keys.historyEnabled) as? Bool ?? false
+    siriRemoteEnabled = defaults.object(forKey: Keys.siriRemoteEnabled) as? Bool ?? false
+    siriRemoteInputDeviceName = defaults.string(forKey: Keys.siriRemoteInputDevice)
+      ?? AppSettings.defaultSiriRemoteInputDeviceName
     dictationHistoryFolder = (defaults.string(forKey: Keys.historyFolder)).map { URL(filePath: $0) }
     voiceVisual = Self.stored(in: defaults, key: Keys.voiceVisual) ?? .waveform
     waveformStyle = Self.stored(in: defaults, key: Keys.waveformStyle) ?? .chartLine

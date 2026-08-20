@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var readAloudController: ReadAloudController?
   private var settingsWindowController: SettingsWindowController?
   private var usageTracker: UsageTracker?
+  private var remoteButtonMonitor: SiriRemoteButtonMonitor?
   private let settingsRuntimeState = SettingsRuntimeState()
   private let updaterService = SparkleUpdaterService()
 
@@ -125,6 +126,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     applyKeyBindings()
     observeKeyBindings()
     observeLanguages()
+    applyRemoteInput()
+    observeRemoteInput()
 
     // A background check is postponed while a session is running, so an update
     // window can never take focus mid-dictation and move the insertion target.
@@ -173,6 +176,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// Starts or stops the Siri Remote monitor to match the setting.
+  ///
+  /// The remote's side button drives the same reducer events the keyboard
+  /// trigger does, so a remote session is an ordinary session that records
+  /// from a different microphone. Only the microphone differs.
+  private func applyRemoteInput() {
+    guard let settings else { return }
+
+    guard settings.siriRemoteEnabled else {
+      remoteButtonMonitor?.stop()
+      remoteButtonMonitor = nil
+      return
+    }
+    guard remoteButtonMonitor == nil else { return }
+
+    let monitor = SiriRemoteButtonMonitor { [weak self] event in
+      Task { @MainActor [weak self] in
+        self?.handleRemoteButton(event)
+      }
+    }
+    monitor.start()
+    remoteButtonMonitor = monitor
+  }
+
+  private func observeRemoteInput() {
+    guard let settings else { return }
+    withObservationTracking {
+      _ = settings.siriRemoteEnabled
+    } onChange: { [weak self] in
+      Task { @MainActor [weak self] in
+        self?.applyRemoteInput()
+        self?.observeRemoteInput()
+      }
+    }
+  }
+
+  /// The remote's fixed mapping: hold the side button to dictate, press
+  /// Back to throw the session away. Every other button stays with macOS.
+  private func handleRemoteButton(_ event: SiriRemoteButtonMonitor.Event) {
+    guard let dictationController else { return }
+    switch event {
+    case .pressed(.siri):
+      dictationController.handle(.triggerPressed(.primary), source: .siriRemote)
+    case .released(.siri):
+      dictationController.handle(.triggerReleased(.primary), source: .siriRemote)
+    case .pressed(.back):
+      dictationController.handle(.cancelPressed, source: .siriRemote)
+    default:
+      break
+    }
+  }
+
   private func applyKeyBindings() {
     guard let settings else { return }
     dictationController?.applyKeyBindings()
@@ -199,6 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    remoteButtonMonitor?.stop()
     dictationController?.stop()
     // A transcript the HUD is still offering only exists in its staging folder,
     // so quitting writes it out rather than losing it.

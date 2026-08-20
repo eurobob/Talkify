@@ -77,8 +77,22 @@ final class MicrophoneInput: @unchecked Sendable {
     self.levelHandler = levelHandler
   }
 
-  func start(outputFormat: AVAudioFormat) throws {
+  /// Starts capture, optionally from a named input device rather than the
+  /// system default.
+  ///
+  /// `preferredDeviceName` exists for the Siri Remote: a session the remote
+  /// started must record from the remote's microphone, while the keyboard
+  /// trigger keeps recording from whatever the user chose in System
+  /// Settings. A name that matches nothing falls back to the default
+  /// device, because a remote whose bridge is not running should still
+  /// dictate rather than fail.
+  func start(outputFormat: AVAudioFormat, preferredDeviceName: String? = nil) throws {
     let inputNode = audioEngine.inputNode
+    if let preferredDeviceName,
+       let device = AudioInputDevice.device(named: preferredDeviceName) {
+      AudioInputDevice.apply(device, to: audioEngine)
+    }
+
     let hardwareFormat = inputNode.inputFormat(forBus: 0)
     guard Self.hasUsableHardwareInput(hardwareFormat) else {
       throw InputError.unavailable
