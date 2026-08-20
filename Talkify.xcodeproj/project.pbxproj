@@ -98,6 +98,7 @@
 				9E87DA62302384C5007A1A70 /* Sources */,
 				9E87DA63302384C5007A1A70 /* Frameworks */,
 				9E87DA64302384C5007A1A70 /* Resources */,
+				9EHELPER0000000000000001 /* Build the voice helper */,
 			);
 			buildRules = (
 			);
@@ -180,6 +181,21 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		9EHELPER0000000000000001 /* Build the voice helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build the voice helper";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nHELPER=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/MacOS/talkify-remote-voiced\"\nDAEMONS=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchDaemons\"\nLABEL=\"digital.chaotic.talkify-remote-voiced\"\nmkdir -p \"$(dirname \"$HELPER\")\" \"$DAEMONS\"\nxcrun swiftc -O \\\n  \"$SRCROOT/helper/main.swift\" \\\n  \"$SRCROOT/Talkify/RemoteInput/Voice/BluetoothTrace.swift\" \\\n  \"$SRCROOT/Talkify/RemoteInput/Voice/SiriRemoteVoiceFrame.swift\" \\\n  \"$SRCROOT/Talkify/RemoteInput/Voice/OpusDecoder.swift\" \\\n  \"$SRCROOT/Talkify/RemoteInput/Voice/SiriRemoteVoiceStream.swift\" \\\n  -o \"$HELPER\"\nprintf '%s' \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><!DOCTYPE plist PUBLIC \\\"-//Apple//DTD PLIST 1.0//EN\\\" \\\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\\\"><plist version=\\\"1.0\\\"><dict><key>Label</key><string>$LABEL</string><key>BundleProgram</key><string>Contents/MacOS/talkify-remote-voiced</string><key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>StandardErrorPath</key><string>/var/log/talkify-remote-voiced.log</string></dict></plist>\" > \"$DAEMONS/$LABEL.plist\"\n";
+		};
 		9E87DA64302384C5007A1A70 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;

@@ -26,6 +26,7 @@ set -eu
 TEAM="${TALKIFY_TEAM:-SZP9K9CJAX}"
 BUNDLE_ID="${TALKIFY_BUNDLE_ID:-digital.chaotic.TalkifyRemote}"
 APP_NAME="${TALKIFY_APP_NAME:-Talkify Remote}"
+HELPER_LABEL="digital.chaotic.talkify-remote-voiced"
 
 # Its own derived data, and this is not a preference. `xcodebuild test`
 # builds the plain "Talkify" product into the shared products directory and
@@ -47,18 +48,10 @@ xcodebuild \
   DEVELOPMENT_TEAM="$TEAM" \
   CODE_SIGN_STYLE=Automatic \
   CODE_SIGN_IDENTITY="Apple Development" \
+  ENABLE_USER_SCRIPT_SANDBOXING=NO \
   PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
   PRODUCT_NAME="$APP_NAME" \
   build
-
-# A plain `[ test ] && exit 0` is a trap under `set -e`: when the test is
-# false the whole list returns non-zero and the shell exits right here,
-# so the build succeeds and the app is never launched. That looks exactly
-# like a broken feature, because the app you are testing is the old one,
-# or none at all.
-if [ "${1:-}" = "--no-run" ]; then
-  exit 0
-fi
 
 APP="$DERIVED/Build/Products/Debug/$APP_NAME.app"
 

@@ -7,9 +7,10 @@ import SwiftUI
 struct SiriRemoteSettingsView: View {
   @Bindable var settings: AppSettings
 
-  /// Read when the section appears. Enumerating CoreAudio on every redraw
-  /// would hit the hardware for a list that changes rarely.
-  @State private var inputDeviceNames: [String] = []
+  /// Read when the section appears and after an install, rather than on
+  /// every redraw: asking launchd is not free.
+  @State private var helperState: VoiceHelperInstaller.State = .notInstalled
+  @State private var helperError: String?
   /// Which button's recorder is armed, if any. One at a time, so a keypress
   /// can never land in two bindings at once.
   @State private var recordingButton: SiriRemoteButtonMonitor.Button?
@@ -28,16 +29,27 @@ struct SiriRemoteSettingsView: View {
             .toggleStyle(.switch)
         }
 
-        SettingsPickerRow(
-          title: "Remote microphone",
-          description: "macOS does not publish the remote's microphone, so a "
-            + "bridge process publishes it under this name. Sessions the "
-            + "keyboard starts are unaffected and keep the system default.",
-          options: inputDeviceNames,
-          optionLabel: { $0 },
-          selection: $settings.siriRemoteInputDeviceName,
-          controlWidth: 200
-        )
+        SettingsRow(
+          title: "Microphone helper",
+          description: helperDescription
+        ) {
+          switch helperState {
+          case .installed:
+            Text("Installed")
+              .font(.system(size: 12, weight: .medium, design: .rounded))
+              .foregroundStyle(.white.opacity(0.6))
+          case .awaitingApproval:
+            Button("Open Settings") { VoiceHelperInstaller.openApprovalSettings() }
+              .buttonStyle(SettingsButtonStyle())
+          case .notInstalled:
+            Button("Install") { installHelper() }
+              .buttonStyle(SettingsButtonStyle())
+          case .missingFromBundle:
+            Text("Missing")
+              .font(.system(size: 12, weight: .medium, design: .rounded))
+              .foregroundStyle(.white.opacity(0.6))
+          }
+        }
         .disabled(!settings.siriRemoteEnabled)
       }
 
@@ -76,7 +88,7 @@ struct SiriRemoteSettingsView: View {
       }
       .disabled(!settings.siriRemoteEnabled)
     }
-    .onAppear { reloadInputDevices() }
+    .onAppear { helperState = VoiceHelperInstaller.state }
     .onDisappear { disarmRecorder() }
   }
 
@@ -172,14 +184,35 @@ struct SiriRemoteSettingsView: View {
     settings.isRecordingKeybind = false
   }
 
-  /// The stored pick stays in the list even when its device is absent,
-  /// which is the normal state while the bridge is not running. Dropping it
-  /// would leave the picker blank and silently rewrite the user's choice.
-  private func reloadInputDevices() {
-    var names = AudioInputDevice.available().map(\.name)
-    if !names.contains(settings.siriRemoteInputDeviceName) {
-      names.append(settings.siriRemoteInputDeviceName)
+  private var helperDescription: String {
+    if let helperError {
+      return "Could not install it: \(helperError)"
     }
-    inputDeviceNames = names
+    switch helperState {
+    case .installed:
+      return "The remote's microphone is ready whenever Talkify is running, "
+        + "including after a restart."
+    case .awaitingApproval:
+      return "macOS needs your approval. Allow \"Talkify Remote\" under "
+        + "Login Items & Extensions, then come back here."
+    case .notInstalled:
+      return "macOS lets only a privileged helper read the Bluetooth link, so "
+        + "the remote's microphone needs one installed once. macOS will ask "
+        + "you to approve it."
+    case .missingFromBundle:
+      return "This build does not contain the helper, so the remote's "
+        + "microphone cannot work. Rebuild the app."
+    }
+  }
+
+  private func installHelper() {
+    switch VoiceHelperInstaller.install() {
+    case let .success(state):
+      helperState = state
+      helperError = nil
+    case let .failure(error):
+      helperState = VoiceHelperInstaller.state
+      helperError = error.localizedDescription
+    }
   }
 }
