@@ -1,3 +1,4 @@
+import OSLog
 import Foundation
 import IOKit
 import IOKit.hid
@@ -294,6 +295,9 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
     }
 
     guard changed else { return }
+    RemoteInputLog.logger.info(
+      "button \(button.rawValue, privacy: .public) \(isDown ? "down" : "up", privacy: .public)"
+    )
     handler(isDown ? .pressed(button) : .released(button))
   }
 }

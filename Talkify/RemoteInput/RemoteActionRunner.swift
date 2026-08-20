@@ -1,3 +1,4 @@
+import OSLog
 import AppKit
 import CoreGraphics
 
@@ -17,7 +18,10 @@ enum RemoteActionRunner {
   static func send(_ binding: KeyBinding) {
     // A bare modifier has nothing to press. The recorder refuses to record
     // one for a remote button, and this is the matching guard.
-    guard !binding.isModifierKey else { return }
+    guard !binding.isModifierKey else {
+      RemoteInputLog.logger.error("refused a bare modifier: \(binding.label, privacy: .public)")
+      return
+    }
 
     // The combined session state, matching the paste keystroke in
     // TextInsertionService that is known to work on this Mac. A
@@ -26,11 +30,17 @@ enum RemoteActionRunner {
     guard let source = CGEventSource(stateID: .combinedSessionState),
           let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
           let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
-    else { return }
+    else {
+      RemoteInputLog.logger.error("could not build the key event for \(binding.label, privacy: .public)")
+      return
+    }
 
     down.flags = binding.modifiers
     up.flags = binding.modifiers
     down.post(tap: .cghidEventTap)
     up.post(tap: .cghidEventTap)
+    RemoteInputLog.logger.info(
+      "sent \(binding.label, privacy: .public) keyCode=\(binding.keyCode) flags=\(binding.modifierFlags)"
+    )
   }
 }

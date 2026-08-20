@@ -1,3 +1,4 @@
+import OSLog
 import AppKit
 
 @main
@@ -265,6 +266,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard isPress else { return }
 
     let action = settings.siriRemoteButtonMap[button]
+    RemoteInputLog.logger.info(
+      "routing \(button.rawValue, privacy: .public) to \(action.kind.rawValue, privacy: .public)"
+    )
     switch action {
     case .cancelDictation:
       dictationController.handle(.cancelPressed, source: .siriRemote)

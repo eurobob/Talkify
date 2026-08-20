@@ -51,7 +51,14 @@ xcodebuild \
   PRODUCT_NAME="$APP_NAME" \
   build
 
-[ "${1:-}" = "--no-run" ] && exit 0
+# A plain `[ test ] && exit 0` is a trap under `set -e`: when the test is
+# false the whole list returns non-zero and the shell exits right here,
+# so the build succeeds and the app is never launched. That looks exactly
+# like a broken feature, because the app you are testing is the old one,
+# or none at all.
+if [ "${1:-}" = "--no-run" ]; then
+  exit 0
+fi
 
 APP="$DERIVED/Build/Products/Debug/$APP_NAME.app"
 
@@ -64,7 +71,17 @@ fi
 # of the fork would fight the first one for the remote and the event tap.
 osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 || true
 open "$APP"
-echo "Launched $APP"
+
+# Say so out loud. A launch that quietly fails leaves the previous build
+# running, or nothing at all, and every test after it measures the wrong
+# thing.
+sleep 2
+if pgrep -f "$APP_NAME" >/dev/null 2>&1; then
+  echo "Launched $APP"
+else
+  echo "LAUNCH FAILED: $APP_NAME is not running" >&2
+  exit 1
+fi
 echo
 echo "First run: grant Accessibility and Input Monitoring to \"$APP_NAME\","
 echo "then quit and reopen it. macOS applies both only at launch."
