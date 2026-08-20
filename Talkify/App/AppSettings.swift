@@ -39,6 +39,7 @@ final class AppSettings {
     static let siriRemoteButtonMap = "siriRemoteButtonMap"
     static let siriRemoteTrackpad = "siriRemoteTrackpad"
     static let siriRemoteTrackpadSpeed = "siriRemoteTrackpadSpeed"
+    static let siriRemoteTapToClick = "siriRemoteTapToClick"
   }
 
   @ObservationIgnored
@@ -111,6 +112,11 @@ final class AppSettings {
   /// is applied on top, so this sets the slow end rather than the top speed.
   var siriRemoteTrackpadSpeed: Double {
     didSet { defaults.set(siriRemoteTrackpadSpeed, forKey: Keys.siriRemoteTrackpadSpeed) }
+  }
+
+  /// Whether a quick touch on the clickpad clicks, without pressing it.
+  var siriRemoteTapToClick: Bool {
+    didSet { defaults.set(siriRemoteTapToClick, forKey: Keys.siriRemoteTapToClick) }
   }
 
   /// What each Siri Remote button does. Buttons left on "Leave to macOS"
@@ -253,7 +259,8 @@ final class AppSettings {
       .flatMap(RemoteButtonMap.init(json:)) ?? .standard
     siriRemoteTrackpadEnabled = defaults.object(forKey: Keys.siriRemoteTrackpad) as? Bool ?? false
     let storedSpeed = defaults.object(forKey: Keys.siriRemoteTrackpadSpeed) as? Double
-    siriRemoteTrackpadSpeed = storedSpeed ?? 900
+    siriRemoteTrackpadSpeed = storedSpeed ?? 620
+    siriRemoteTapToClick = defaults.object(forKey: Keys.siriRemoteTapToClick) as? Bool ?? true
     dictationHistoryFolder = (defaults.string(forKey: Keys.historyFolder)).map { URL(filePath: $0) }
     voiceVisual = Self.stored(in: defaults, key: Keys.voiceVisual) ?? .waveform
     waveformStyle = Self.stored(in: defaults, key: Keys.waveformStyle) ?? .chartLine

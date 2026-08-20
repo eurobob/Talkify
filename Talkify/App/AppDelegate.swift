@@ -184,6 +184,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// The remote's side button drives the same reducer events the keyboard
   /// trigger does, so a remote session is an ordinary session that records
   /// from a different microphone. Only the microphone differs.
+  /// Brings the remote's three parts into line with the settings.
+  ///
+  /// Each part is applied on its own. They are switched on independently,
+  /// and an early return once the buttons are running would mean turning
+  /// the clickpad on later did nothing at all — the setting reads on, the
+  /// pad does nothing, and there is no message to explain it.
   private func applyRemoteInput() {
     guard let settings else { return }
 
@@ -194,28 +200,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       remoteTouchpad = nil
       return
     }
-    guard remoteButtonMonitor == nil else { return }
 
-    // The remote's microphone needs a privileged helper, and asking for it
-    // the moment the feature is switched on is the only honest time: the
-    // user has just said they want the remote, and the alternative is a
-    // button they have to find before dictation works.
-    let helperState = VoiceHelperInstaller.state
-    RemoteInputLog.logger.info(
-      "voice helper state: \(helperState.title, privacy: .public)"
-    )
+    installVoiceHelperIfNeeded()
+    remoteCursor.speed = settings.siriRemoteTrackpadSpeed
+    remoteCursor.isTapToClickEnabled = settings.siriRemoteTapToClick
+    applyRemoteButtons()
+    applyRemoteTouchpad(enabled: settings.siriRemoteTrackpadEnabled)
+  }
+
+  /// The remote's microphone needs a privileged helper, and asking for it
+  /// the moment the feature is switched on is the only honest time: the
+  /// user has just said they want the remote, and the alternative is a
+  /// button they have to find before dictation works.
+  private func installVoiceHelperIfNeeded() {
+    let state = VoiceHelperInstaller.state
+    RemoteInputLog.logger.info("voice helper state: \(state.title, privacy: .public)")
+
     // Attempted even when the status reads "missing": that status is
     // reported for several unrelated reasons, and the error from an actual
     // attempt names the real one.
-    if helperState != .installed, helperState != .awaitingApproval {
-      if case let .failure(error) = VoiceHelperInstaller.install() {
-        RemoteInputLog.logger.error(
-          "voice helper install failed: \(String(describing: error), privacy: .public)"
-        )
-      }
+    guard state != .installed, state != .awaitingApproval else { return }
+    if case let .failure(error) = VoiceHelperInstaller.install() {
+      RemoteInputLog.logger.error(
+        "voice helper install failed: \(String(describing: error), privacy: .public)"
+      )
     }
+  }
 
-    remoteCursor.speed = settings.siriRemoteTrackpadSpeed
+  private func applyRemoteButtons() {
+    guard remoteButtonMonitor == nil else { return }
 
     let monitor = SiriRemoteButtonMonitor { [weak self] event in
       Task { @MainActor [weak self] in
@@ -225,26 +238,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let result = monitor.start()
     remoteButtonMonitor = monitor
 
-    if settings.siriRemoteTrackpadEnabled {
-      let touchpad = SiriRemoteTouchpad { [weak self] touch in
-        Task { @MainActor [weak self] in
-          self?.remoteCursor.receive(touch)
-        }
-      }
-      let touchResult = touchpad.start()
-      remoteTouchpad = touchpad
-      if touchResult != .started {
-        RemoteInputLog.logger.error(
-          "clickpad unavailable: \(String(describing: touchResult), privacy: .public)"
-        )
-      }
-    }
-
     // Silence here is the worst outcome: the switch reads on, the remote
     // does nothing, and nothing on screen says why. Every failure has a
     // different fix, so each one names itself.
     guard result != .started else { return }
     hudController?.showMessage(Self.message(for: result), on: nil)
+  }
+
+  private func applyRemoteTouchpad(enabled: Bool) {
+    guard enabled else {
+      remoteTouchpad?.stop()
+      remoteTouchpad = nil
+      return
+    }
+    guard remoteTouchpad == nil else { return }
+
+    let touchpad = SiriRemoteTouchpad { [weak self] touch in
+      Task { @MainActor [weak self] in
+        self?.remoteCursor.receive(touch)
+      }
+    }
+    let result = touchpad.start()
+    remoteTouchpad = touchpad
+
+    guard result != .started else { return }
+    RemoteInputLog.logger.error(
+      "clickpad unavailable: \(String(describing: result), privacy: .public)"
+    )
+    hudController?.showMessage("The Siri Remote's clickpad is unavailable", on: nil)
   }
 
   private static func message(for result: SiriRemoteButtonMonitor.StartResult) -> String {
@@ -266,6 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       _ = settings.siriRemoteEnabled
       _ = settings.siriRemoteTrackpadEnabled
       _ = settings.siriRemoteTrackpadSpeed
+      _ = settings.siriRemoteTapToClick
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         self?.applyRemoteInput()
@@ -303,17 +325,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
 
-    // Every other button acts on the way down only, so one press cannot run
-    // its action twice.
-    guard isPress else { return }
-
     // The clickpad's press belongs to the pointer while the trackpad is
     // on: it is the click, and freezing on it is what stops the pointer
-    // sliding out from under the thing being clicked.
+    // sliding out from under the thing being clicked. It needs the release
+    // too — behind the press-only guard below, the pointer froze on the
+    // first click and never moved again.
     if button == .select, settings.siriRemoteTrackpadEnabled {
       remoteCursor.setPressed(isPress)
       return
     }
+
+    // Every other button acts on the way down only, so one press cannot run
+    // its action twice.
+    guard isPress else { return }
 
     let action = settings.siriRemoteButtonMap[button]
     RemoteInputLog.logger.info(

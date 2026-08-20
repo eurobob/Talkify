@@ -74,9 +74,20 @@ struct SiriRemoteSettingsView: View {
         ) {
           Slider(
             value: $settings.siriRemoteTrackpadSpeed,
-            in: 300...2000
+            in: 120...1200
           )
           .frame(width: 180)
+        }
+        .disabled(!settings.siriRemoteTrackpadEnabled)
+
+        SettingsRow(
+          title: "Tap to click",
+          description: "A quick touch that does not travel clicks, without "
+            + "pressing the pad down."
+        ) {
+          Toggle("Tap to click", isOn: $settings.siriRemoteTapToClick)
+            .labelsHidden()
+            .toggleStyle(.switch)
         }
         .disabled(!settings.siriRemoteTrackpadEnabled)
       }

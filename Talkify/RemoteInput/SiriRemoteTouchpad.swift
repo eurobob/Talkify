@@ -23,6 +23,23 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
     /// How many fingers the pad currently reports. Zero means the last one
     /// lifted, which is the only reliable end-of-gesture signal.
     let contacts: Int
+    /// The pad's own identifier for this finger. It survives for the life
+    /// of one contact, so a change means a different finger is being
+    /// reported — and the distance between two fingers is not a movement.
+    let identifier: Int
+    /// Where the finger is in its life: landing, settled, or lifting. Only
+    /// a settled finger has a position worth acting on.
+    let state: Int
+
+    /// True once the pad is confident where the finger is. A landing or
+    /// lifting finger reports a position that is still being estimated,
+    /// and acting on it is what throws the pointer across the screen the
+    /// instant the pad is touched.
+    var isSettled: Bool { state == Self.settledState }
+
+    /// MultitouchSupport's "touching" state. The states either side of it
+    /// are the transitional ones.
+    private static let settledState = 4
   }
 
   enum StartResult: Sendable, Equatable {
@@ -44,6 +61,8 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
   /// struct: a struct definition would compile and quietly read the wrong
   /// bytes. Measured against a live remote on 2026-08-20.
   private enum Offset {
+    static let identifier = 16
+    static let state = 20
     static let x = 32
     static let y = 36
   }
@@ -161,7 +180,7 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
     // reliable one: it must reach the handler even though there is no
     // position to read.
     guard let touches, count > 0 else {
-      handler(Touch(x: 0, y: 0, contacts: 0))
+      handler(Touch(x: 0, y: 0, contacts: 0, identifier: 0, state: 0))
       return
     }
 
@@ -169,7 +188,9 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
       Touch(
         x: touches.load(fromByteOffset: Offset.x, as: Float.self),
         y: touches.load(fromByteOffset: Offset.y, as: Float.self),
-        contacts: Int(count)
+        contacts: Int(count),
+        identifier: Int(touches.load(fromByteOffset: Offset.identifier, as: Int32.self)),
+        state: Int(touches.load(fromByteOffset: Offset.state, as: Int32.self))
       )
     )
   }
