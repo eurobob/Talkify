@@ -192,6 +192,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     guard remoteButtonMonitor == nil else { return }
 
+    // The remote's microphone needs a privileged helper, and asking for it
+    // the moment the feature is switched on is the only honest time: the
+    // user has just said they want the remote, and the alternative is a
+    // button they have to find before dictation works.
+    let helperState = VoiceHelperInstaller.state
+    RemoteInputLog.logger.info(
+      "voice helper state: \(helperState.title, privacy: .public)"
+    )
+    // Attempted even when the status reads "missing": that status is
+    // reported for several unrelated reasons, and the error from an actual
+    // attempt names the real one.
+    if helperState != .installed, helperState != .awaitingApproval {
+      if case let .failure(error) = VoiceHelperInstaller.install() {
+        RemoteInputLog.logger.error(
+          "voice helper install failed: \(String(describing: error), privacy: .public)"
+        )
+      }
+    }
+
     let monitor = SiriRemoteButtonMonitor { [weak self] event in
       Task { @MainActor [weak self] in
         self?.handleRemoteButton(event)

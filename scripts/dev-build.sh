@@ -27,6 +27,11 @@ TEAM="${TALKIFY_TEAM:-SZP9K9CJAX}"
 BUNDLE_ID="${TALKIFY_BUNDLE_ID:-digital.chaotic.TalkifyRemote}"
 APP_NAME="${TALKIFY_APP_NAME:-Talkify Remote}"
 HELPER_LABEL="digital.chaotic.talkify-remote-voiced"
+# Developer ID, not Apple Development. SMAppService refuses to register a
+# daemon from a development-signed app: it fails with SMAppServiceErrorDomain
+# code 1, "Operation not permitted", and reports the helper as missing from
+# the bundle even though it is there and sealed into the signature.
+IDENTITY="${TALKIFY_IDENTITY:-Developer ID Application}"
 
 # Its own derived data, and this is not a preference. `xcodebuild test`
 # builds the plain "Talkify" product into the shared products directory and
@@ -46,8 +51,9 @@ xcodebuild \
   -derivedDataPath "$DERIVED" \
   -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM" \
-  CODE_SIGN_STYLE=Automatic \
-  CODE_SIGN_IDENTITY="Apple Development" \
+  CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_IDENTITY="$IDENTITY" \
+  OTHER_CODE_SIGN_FLAGS="--options=runtime --timestamp" \
   ENABLE_USER_SCRIPT_SANDBOXING=NO \
   PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
   PRODUCT_NAME="$APP_NAME" \
@@ -63,6 +69,16 @@ fi
 # Only this fork is quit, never a released Talkify beside it. A second copy
 # of the fork would fight the first one for the remote and the event tap.
 osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 || true
+
+# Installed into /Applications, and run from there, because that is where
+# SMAppService will register a daemon from. Asking launchd to install a
+# root daemon out of a DerivedData folder is refused, and the app is left
+# reporting that its helper is missing from the bundle.
+INSTALLED_APP="/Applications/$APP_NAME.app"
+rm -rf "$INSTALLED_APP"
+cp -R "$APP" "$INSTALLED_APP"
+APP="$INSTALLED_APP"
+
 open "$APP"
 
 # Say so out loud. A launch that quietly fails leaves the previous build
