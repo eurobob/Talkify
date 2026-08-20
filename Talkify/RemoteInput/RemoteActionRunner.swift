@@ -1,4 +1,5 @@
 import OSLog
+import ApplicationServices
 import AppKit
 import CoreGraphics
 
@@ -35,12 +36,26 @@ enum RemoteActionRunner {
       return
     }
 
+    // Posting a key event is its own permission, separate from
+    // Accessibility, and CGEvent.post reports nothing when it is refused:
+    // the event is built, posted, and silently dropped. Asking first is
+    // the only way to tell a rejected keystroke from an ignored one.
+    let mayPost = CGPreflightPostEventAccess()
+    guard mayPost else {
+      RemoteInputLog.logger.error(
+        "not allowed to post key events — asking for permission now"
+      )
+      // Prompts once, then never again; the user finishes it in Settings.
+      _ = CGRequestPostEventAccess()
+      return
+    }
+
     down.flags = binding.modifiers
     up.flags = binding.modifiers
     down.post(tap: .cghidEventTap)
     up.post(tap: .cghidEventTap)
     RemoteInputLog.logger.info(
-      "sent \(binding.label, privacy: .public) keyCode=\(binding.keyCode) flags=\(binding.modifierFlags)"
+      "sent \(binding.label, privacy: .public) keyCode=\(binding.keyCode) flags=\(binding.modifierFlags) trusted=\(AXIsProcessTrusted())"
     )
   }
 }
