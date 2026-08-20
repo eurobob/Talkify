@@ -249,25 +249,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       isPress = false
     }
 
-    let action = settings.siriRemoteButtonMap[button]
-    guard isPress || action.needsRelease else { return }
-
-    switch action {
-    case .dictateHold:
+    // The Siri button dictates and is not configurable. It is the only
+    // button with a microphone behind it, and it needs the release as well
+    // as the press, which no bound keystroke does.
+    guard button != .siri else {
       dictationController.handle(
         isPress ? .triggerPressed(.primary) : .triggerReleased(.primary),
         source: .siriRemote
       )
-    case .dictateToggle:
-      dictationController.toggleFromMenu()
+      return
+    }
+
+    // Every other button acts on the way down only, so one press cannot run
+    // its action twice.
+    guard isPress else { return }
+
+    let action = settings.siriRemoteButtonMap[button]
+    switch action {
     case .cancelDictation:
       dictationController.handle(.cancelPressed, source: .siriRemote)
-    case .readAloud:
-      readAloudController?.toggle()
-    case let .sendKeys(binding):
-      RemoteActionRunner.send(binding)
     case .none:
       break
+    case .missionControl, .applicationWindows, .showDesktop, .spotlight, .sendKeys:
+      guard let binding = action.keyBinding else { return }
+      RemoteActionRunner.send(binding)
     }
   }
 

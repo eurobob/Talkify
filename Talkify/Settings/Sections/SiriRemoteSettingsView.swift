@@ -48,7 +48,9 @@ struct SiriRemoteSettingsView: View {
             + "the button presses it. A button left on \"Leave to macOS\" keeps "
             + "working the way it always did: Talkify reads the remote without "
             + "taking it over, so the volume, mute and transport keys still "
-            + "reach the system on their own."
+            + "reach the system on their own. Mission Control and the rest are "
+            + "named here because macOS swallows their shortcuts before a "
+            + "recorder can capture them."
         ) {
           Button("Reset") {
             recordingButton = nil
@@ -58,7 +60,17 @@ struct SiriRemoteSettingsView: View {
           .buttonStyle(SettingsButtonStyle())
         }
 
-        ForEach(SiriRemoteButtonMonitor.Button.allCases, id: \.self) { button in
+        SettingsRow(
+          title: SiriRemoteButtonMonitor.Button.siri.title,
+          description: "Holds to dictate. This one is fixed: it is the button "
+            + "with the microphone behind it."
+        ) {
+          Text("Dictate while held")
+            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .foregroundStyle(.white.opacity(0.6))
+        }
+
+        ForEach(configurableButtons, id: \.self) { button in
           buttonRow(button)
         }
       }
@@ -66,6 +78,11 @@ struct SiriRemoteSettingsView: View {
     }
     .onAppear { reloadInputDevices() }
     .onDisappear { disarmRecorder() }
+  }
+
+  /// Every button the user may bind. The Siri button is not one of them.
+  private var configurableButtons: [SiriRemoteButtonMonitor.Button] {
+    SiriRemoteButtonMonitor.Button.allCases.filter { $0 != .siri }
   }
 
   @ViewBuilder
@@ -123,7 +140,7 @@ struct SiriRemoteSettingsView: View {
         let current = settings.siriRemoteButtonMap[button]
         settings.siriRemoteButtonMap[button] = current.withKind(
           kind,
-          recorded: current.keyBinding ?? .optionEscape
+          recorded: current.recordedKeyBinding ?? .optionEscape
         )
         if kind != .sendKeys, recordingButton == button { disarmRecorder() }
       }
@@ -134,7 +151,7 @@ struct SiriRemoteSettingsView: View {
     for button: SiriRemoteButtonMonitor.Button
   ) -> Binding<KeyBinding> {
     Binding(
-      get: { settings.siriRemoteButtonMap[button].keyBinding ?? .optionEscape },
+      get: { settings.siriRemoteButtonMap[button].recordedKeyBinding ?? .optionEscape },
       set: { settings.siriRemoteButtonMap[button] = .sendKeys($0) }
     )
   }

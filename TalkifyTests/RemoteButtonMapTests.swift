@@ -13,10 +13,16 @@ struct RemoteButtonMapTests {
     keyEquivalent: "4"
   )
 
-  @Test func theStandardMapDictatesFromSiriAndCancelsFromBack() {
-    let map = RemoteButtonMap.standard
-    #expect(map[.siri] == .dictateHold)
-    #expect(map[.back] == .cancelDictation)
+  @Test func theStandardMapCancelsFromBack() {
+    #expect(RemoteButtonMap.standard[.back] == .cancelDictation)
+  }
+
+  /// The Siri button is never in the map. It dictates, the AppDelegate
+  /// routes it before the map is consulted, and an entry here would be a
+  /// second opinion about a button that has none.
+  @Test func theSiriButtonIsNotBindable() {
+    #expect(RemoteButtonMap.standard[.siri] == .none)
+    #expect(!RemoteButtonAction.Kind.allCases.map(\.title).contains { $0.contains("Dictate") })
   }
 
   /// Every other button belongs to macOS. Talkify reads the remote without
@@ -33,12 +39,12 @@ struct RemoteButtonMapTests {
   @Test func aRecordedCombinationSurvivesItsJSONRoundTrip() {
     var map = RemoteButtonMap.standard
     map[.playPause] = .sendKeys(cmdShiftFour)
-    map[.tv] = .readAloud
+    map[.tv] = .missionControl
 
     let restored = RemoteButtonMap(json: map.json)
     #expect(restored == map)
     #expect(restored?[.playPause].keyBinding == cmdShiftFour)
-    #expect(restored?[.tv] == .readAloud)
+    #expect(restored?[.tv] == .missionControl)
   }
 
   /// A map written by a build that knew more buttons must lose only the
@@ -49,7 +55,7 @@ struct RemoteButtonMapTests {
     let json = map.json.replacingOccurrences(of: "\"tv\"", with: "\"teleport\"")
 
     let restored = RemoteButtonMap(json: json)
-    #expect(restored?[.siri] == .dictateHold)
+    #expect(restored?[.back] == .cancelDictation)
     // Spelled out: a bare `.none` here reads as Optional.none, which would
     // assert the whole map failed to load rather than that this one button
     // is unbound.
@@ -59,9 +65,9 @@ struct RemoteButtonMapTests {
   /// Send-keys with nothing recorded would be a button that claims to do
   /// something and does nothing.
   @Test func sendKeysWithoutACombinationIsDropped() {
-    let json = #"{"tv":{"kind":"sendKeys"},"siri":{"kind":"dictateHold"}}"#
+    let json = #"{"tv":{"kind":"sendKeys"},"back":{"kind":"cancelDictation"}}"#
     let restored = RemoteButtonMap(json: json)
-    #expect(restored?[.siri] == .dictateHold)
+    #expect(restored?[.back] == .cancelDictation)
     #expect(restored?[.tv] == RemoteButtonAction.none)
   }
 
@@ -69,24 +75,31 @@ struct RemoteButtonMapTests {
     #expect(RemoteButtonMap(json: "not json at all") == nil)
   }
 
-  /// Only hold-to-talk cares about the release. If another action did, one
-  /// press would run it twice.
-  @Test func onlyHoldToTalkActsOnTheRelease() {
-    let actions: [RemoteButtonAction] = [
-      .none, .dictateHold, .dictateToggle, .cancelDictation, .readAloud,
-      .sendKeys(cmdShiftFour),
-    ]
-    for action in actions {
-      #expect(action.needsRelease == (action == .dictateHold))
-    }
+  /// The named actions must resolve to a real combination, or the button
+  /// would be bound to nothing. Only the two app actions press no keys.
+  @Test func everyNamedActionResolvesToAShortcut() {
+    #expect(RemoteButtonAction.missionControl.keyBinding == .missionControl)
+    #expect(RemoteButtonAction.applicationWindows.keyBinding == .applicationWindows)
+    #expect(RemoteButtonAction.showDesktop.keyBinding == .showDesktop)
+    #expect(RemoteButtonAction.spotlight.keyBinding == .spotlight)
+    #expect(RemoteButtonAction.sendKeys(cmdShiftFour).keyBinding == cmdShiftFour)
+    #expect(RemoteButtonAction.none.keyBinding == nil)
+    #expect(RemoteButtonAction.cancelDictation.keyBinding == nil)
+  }
+
+  /// A named action's shortcut is this app's, not the user's, so it must
+  /// never be stored as if they had recorded it.
+  @Test func onlyARecordedCombinationIsStored() {
+    #expect(RemoteButtonAction.missionControl.recordedKeyBinding == nil)
+    #expect(RemoteButtonAction.sendKeys(cmdShiftFour).recordedKeyBinding == cmdShiftFour)
   }
 
   /// Switching a button to another action and back must not make the user
   /// record the same combination twice.
   @Test func switchingKindAwayAndBackKeepsTheRecordedCombination() {
     let sending = RemoteButtonAction.sendKeys(cmdShiftFour)
-    let parked = sending.withKind(.readAloud, recorded: cmdShiftFour)
-    #expect(parked == .readAloud)
+    let parked = sending.withKind(.missionControl, recorded: cmdShiftFour)
+    #expect(parked == .missionControl)
 
     // The view passes the button's own recording back in, which is what
     // makes the combination survive the detour.

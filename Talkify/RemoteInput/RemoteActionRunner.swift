@@ -19,13 +19,12 @@ enum RemoteActionRunner {
     // one for a remote button, and this is the matching guard.
     guard !binding.isModifierKey else { return }
 
-    // The HID session, so the events land the way a real keyboard's do.
-    // A tap-level source is filtered out by some of the system's own
-    // shortcut handling, Mission Control included.
-    let source = CGEventSource(stateID: .hidSystemState)
+    // The combined session state, matching the paste keystroke in
+    // TextInsertionService that is known to work on this Mac. A
+    // hidSystemState source builds the same event and delivers nothing.
     let key = CGKeyCode(binding.keyCode)
-
-    guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
+    guard let source = CGEventSource(stateID: .combinedSessionState),
+          let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
           let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
     else { return }
 
