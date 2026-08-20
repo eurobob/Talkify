@@ -1,16 +1,32 @@
 #!/bin/sh
-# Builds Talkify and runs it, signed with your own Apple Development team.
+# Builds this fork and runs it, signed with your own Apple Development team.
 #
-# The committed project carries the upstream author's team, so a plain
-# `xcodebuild` fails with "No signing certificate Mac Development found".
-# This script overrides the team on the command line and leaves the project
-# file untouched, so the fork stays easy to merge from upstream.
+# Two overrides matter, and both exist to keep the fork out of the released
+# Talkify's way.
+#
+# The team: the committed project carries the upstream author's team, so a
+# plain `xcodebuild` fails with "No signing certificate Mac Development
+# found".
+#
+# The identity: the fork must not share a bundle identifier with a released
+# Talkify. macOS grants Accessibility and Input Monitoring to a bundle
+# identifier plus a signature. The released app already holds the grant for
+# com.tgomareli.Talkify under the author's team, so a fork signed by anyone
+# else is a stranger claiming that name: the switch in System Settings stays
+# on, and the permission still does not apply. Its own identifier gives the
+# fork its own row, its own grants, and its own preferences.
+#
+# Both overrides live here rather than in the project file, so merges from
+# upstream stay clean.
 #
 #   ./scripts/dev-build.sh            build, then launch
 #   ./scripts/dev-build.sh --no-run   build only
 set -eu
 
 TEAM="${TALKIFY_TEAM:-SZP9K9CJAX}"
+BUNDLE_ID="${TALKIFY_BUNDLE_ID:-digital.chaotic.TalkifyRemote}"
+APP_NAME="${TALKIFY_APP_NAME:-Talkify Remote}"
+
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
@@ -22,6 +38,8 @@ xcodebuild \
   DEVELOPMENT_TEAM="$TEAM" \
   CODE_SIGN_STYLE=Automatic \
   CODE_SIGN_IDENTITY="Apple Development" \
+  PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+  PRODUCT_NAME="$APP_NAME" \
   build
 
 [ "${1:-}" = "--no-run" ] && exit 0
@@ -31,14 +49,18 @@ BUILD_DIR="$(
     -showBuildSettings 2>/dev/null |
   awk '/ BUILT_PRODUCTS_DIR = /{ print $3; exit }'
 )"
-APP="$BUILD_DIR/Talkify.app"
+APP="$BUILD_DIR/$APP_NAME.app"
 
 if [ ! -d "$APP" ]; then
   echo "Built app not found at $APP" >&2
   exit 1
 fi
 
-# A second copy would fight the first one for the remote and the event tap.
-osascript -e 'quit app "Talkify"' >/dev/null 2>&1 || true
+# Only this fork is quit, never a released Talkify beside it. A second copy
+# of the fork would fight the first one for the remote and the event tap.
+osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 || true
 open "$APP"
 echo "Launched $APP"
+echo
+echo "First run: grant Accessibility and Input Monitoring to \"$APP_NAME\","
+echo "then quit and reopen it. macOS applies both only at launch."

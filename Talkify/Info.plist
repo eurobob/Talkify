@@ -12,15 +12,17 @@
 	     login Keychain and is never in the repository. -->
 	<key>SUPublicEDKey</key>
 	<string>CS7EqGMvprKkjontSt/uLAG3gkw4CSwaMKVLd+W1UV4=</string>
+	<!-- Off in this fork. The feed above is upstream's, and upstream's build
+	     is not this one: a scheduled check would offer their release and
+	     replace the fork with it. Turn these back on only once the feed
+	     points at a release of this fork. -->
 	<key>SUEnableAutomaticChecks</key>
-	<true/>
+	<false/>
 	<!-- Once a day. Talkify is a menu-bar app people leave running for weeks,
 	     so anything shorter is noise. -->
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
-	<!-- Downloading happens only when the user opts in; the default stays off
-	     so an update never replaces the binary unasked. -->
 	<key>SUAllowsAutomaticUpdates</key>
-	<true/>
+	<false/>
 </dict>
 </plist>
