@@ -27,6 +27,14 @@ TEAM="${TALKIFY_TEAM:-SZP9K9CJAX}"
 BUNDLE_ID="${TALKIFY_BUNDLE_ID:-digital.chaotic.TalkifyRemote}"
 APP_NAME="${TALKIFY_APP_NAME:-Talkify Remote}"
 
+# Its own derived data, and this is not a preference. `xcodebuild test`
+# builds the plain "Talkify" product into the shared products directory and
+# deletes "Talkify Remote.app" as it goes. The app keeps running from the
+# deleted bundle, macOS can no longer validate it, and every TCC permission
+# it holds stops working — the microphone included. That failure looks
+# exactly like a broken app: dictation opens and no audio ever arrives.
+DERIVED="${TALKIFY_DERIVED_DATA:-$HOME/Library/Developer/Xcode/DerivedData/TalkifyRemote-dev}"
+
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
@@ -34,6 +42,7 @@ xcodebuild \
   -project Talkify.xcodeproj \
   -scheme Talkify \
   -configuration Debug \
+  -derivedDataPath "$DERIVED" \
   -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM" \
   CODE_SIGN_STYLE=Automatic \
@@ -44,12 +53,7 @@ xcodebuild \
 
 [ "${1:-}" = "--no-run" ] && exit 0
 
-BUILD_DIR="$(
-  xcodebuild -project Talkify.xcodeproj -scheme Talkify -configuration Debug \
-    -showBuildSettings 2>/dev/null |
-  awk '/ BUILT_PRODUCTS_DIR = /{ print $3; exit }'
-)"
-APP="$BUILD_DIR/$APP_NAME.app"
+APP="$DERIVED/Build/Products/Debug/$APP_NAME.app"
 
 if [ ! -d "$APP" ]; then
   echo "Built app not found at $APP" >&2

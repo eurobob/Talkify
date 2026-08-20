@@ -98,7 +98,14 @@ final class MicrophoneInput: @unchecked Sendable {
       throw InputError.unavailable
     }
 
-    let inputFormat = inputNode.outputFormat(forBus: 0)
+    // The tap takes the hardware's own format, not the node's output format.
+    // The two agree until a session switches input device: the switch updates
+    // the node's input format at once and leaves its output format describing
+    // the device before it. A tap installed with that stale format is never
+    // called — the engine starts, the session opens, and not one buffer
+    // arrives. Measured on 2026-08-20 with the Siri Remote's microphone:
+    // 16 kHz hardware, a 44.1 kHz stale format, zero buffers in 15 seconds.
+    let inputFormat = hardwareFormat
     guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
       throw InputError.unavailable
     }
