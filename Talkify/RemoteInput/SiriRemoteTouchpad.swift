@@ -78,6 +78,7 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
     let start: @convention(c) (DeviceRef, Int32) -> Void
     let stop: @convention(c) (DeviceRef) -> Void
     let familyID: @convention(c) (DeviceRef, UnsafeMutablePointer<Int32>) -> Int32
+    let deviceID: @convention(c) (DeviceRef, UnsafeMutablePointer<UInt64>) -> Int32
 
     init?(handle: UnsafeMutableRawPointer) {
       func load(_ name: String) -> UnsafeMutableRawPointer? {
@@ -94,7 +95,8 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
             let register = load("MTRegisterContactFrameCallback"),
             let start = load("MTDeviceStart"),
             let stop = load("MTDeviceStop"),
-            let family = load("MTDeviceGetFamilyID")
+            let family = load("MTDeviceGetFamilyID"),
+            let identifier = load("MTDeviceGetDeviceID")
       else { return nil }
 
       self.createList = unsafeBitCast(createList, to: (@convention(c) () -> CFMutableArray?).self)
@@ -106,6 +108,9 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
       self.familyID = unsafeBitCast(
         family, to: (@convention(c) (DeviceRef, UnsafeMutablePointer<Int32>) -> Int32).self
       )
+      self.deviceID = unsafeBitCast(
+        identifier, to: (@convention(c) (DeviceRef, UnsafeMutablePointer<UInt64>) -> Int32).self
+      )
     }
   }
 
@@ -113,7 +118,19 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
   private let stateLock = NSLock()
 
   private var symbols: Symbols?
-  private var startedDevices: [DeviceRef] = []
+  /// Keyed by the pad's own identifier, not by pointer. Every call to
+  /// MTDeviceCreateList hands back fresh references for the same hardware,
+  /// so comparing pointers makes the pad look new on every scan: it is
+  /// restarted several times a second and delivers nothing.
+  private var startedDevices: [UInt64: DeviceRef] = [:]
+  /// Re-scans for the pad. The remote drops its connection whenever it
+  /// idles — hundreds of times a day — and comes back as a new multitouch
+  /// device. Enumerating once at launch means the pointer works until the
+  /// first time the remote sleeps and never again, while the buttons keep
+  /// working and hide the fault: the button monitor has a matching
+  /// callback for exactly this, and MultitouchSupport offers none.
+  private var rescanTimer: DispatchSourceTimer?
+  private static let rescanInterval: DispatchTimeInterval = .seconds(3)
 
   init(handler: @escaping @Sendable (Touch) -> Void) {
     self.handler = handler
@@ -141,7 +158,21 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
     // context pointer: MTRegisterContactFrameCallback takes no context.
     activeTouchpad = self
 
-    var found = false
+    let found = attachNewDevices(symbols: symbols)
+    startRescanning()
+
+    // Not finding it now is not a failure: the remote is asleep more often
+    // than it is awake, and the re-scan picks it up when it returns.
+    return found ? .started : .noRemoteFound
+  }
+
+  /// Starts any pad that is present and not already running. Returns
+  /// whether one is running by the end.
+  @discardableResult
+  private func attachNewDevices(symbols: Symbols) -> Bool {
+    guard let list = symbols.createList() else { return false }
+
+    var present: [UInt64: DeviceRef] = [:]
     for index in 0..<CFArrayGetCount(list) {
       guard let value = CFArrayGetValueAtIndex(list, index) else { continue }
       let device = DeviceRef(mutating: value)
@@ -150,21 +181,53 @@ final class SiriRemoteTouchpad: @unchecked Sendable {
       _ = symbols.familyID(device, &family)
       guard family == Self.remoteFamily else { continue }
 
-      symbols.registerCallback(device, touchpadCallback)
-      symbols.start(device, 0)
-      stateLock.withLock { startedDevices.append(device) }
-      found = true
-      RemoteInputLog.logger.info("clickpad started, family \(family)")
+      var identifier: UInt64 = 0
+      _ = symbols.deviceID(device, &identifier)
+      present[identifier] = device
     }
 
-    return found ? .started : .noRemoteFound
+    // A pad that has gone is forgotten, so its return counts as new.
+    let added: [DeviceRef] = stateLock.withLock {
+      for identifier in startedDevices.keys where present[identifier] == nil {
+        startedDevices[identifier] = nil
+        RemoteInputLog.logger.info("clickpad detached")
+      }
+      var new: [DeviceRef] = []
+      for (identifier, device) in present where startedDevices[identifier] == nil {
+        startedDevices[identifier] = device
+        new.append(device)
+      }
+      return new
+    }
+
+    for device in added {
+      symbols.registerCallback(device, touchpadCallback)
+      symbols.start(device, 0)
+      RemoteInputLog.logger.info("clickpad attached")
+    }
+
+    return stateLock.withLock { !startedDevices.isEmpty }
+  }
+
+  private func startRescanning() {
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + Self.rescanInterval, repeating: Self.rescanInterval)
+    timer.setEventHandler { [weak self] in
+      guard let self, let symbols = stateLock.withLock({ self.symbols }) else { return }
+      attachNewDevices(symbols: symbols)
+    }
+    timer.resume()
+    rescanTimer = timer
   }
 
   func stop() {
+    rescanTimer?.cancel()
+    rescanTimer = nil
+
     let (symbols, devices) = stateLock.withLock { () -> (Symbols?, [DeviceRef]) in
       let currentSymbols = self.symbols
-      let currentDevices = startedDevices
-      startedDevices = []
+      let currentDevices = Array(startedDevices.values)
+      startedDevices = [:]
       return (currentSymbols, currentDevices)
     }
 

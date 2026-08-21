@@ -124,6 +124,25 @@ A daemon without the app is not a working remote: the app is what reads the
 buttons, moves the pointer and runs the commands. macOS may ask the user to
 approve either of them under Login Items & Extensions the first time.
 
+## The remote reconnects constantly
+
+It drops its Bluetooth connection whenever it idles — hundreds of times a
+day on a normal machine — and comes back as new devices. **Anything that
+reads the remote must handle reattachment**, or it works until the first
+sleep and then dies silently.
+
+`SiriRemoteButtonMonitor` uses `IOHIDManagerRegisterDeviceMatchingCallback`.
+`MultitouchSupport` offers no such callback, so `SiriRemoteTouchpad`
+re-scans every three seconds instead.
+
+Key a pad by `MTDeviceGetDeviceID`, never by its pointer:
+`MTDeviceCreateList` hands back fresh references for the same hardware on
+every call, so comparing pointers makes the pad look new on every scan and
+restarts it several times a second.
+
+This failure is particularly nasty because the buttons keep working
+throughout, which makes it look like anything but a reattachment problem.
+
 ## When it stops working
 
 ```sh
