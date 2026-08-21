@@ -40,6 +40,7 @@ final class AppSettings {
     static let siriRemoteTrackpad = "siriRemoteTrackpad"
     static let siriRemoteTrackpadSpeed = "siriRemoteTrackpadSpeed"
     static let siriRemoteTapToClick = "siriRemoteTapToClick"
+    static let siriRemoteRingScroll = "siriRemoteRingScroll"
   }
 
   @ObservationIgnored
@@ -117,6 +118,12 @@ final class AppSettings {
   /// Whether a quick touch on the clickpad clicks, without pressing it.
   var siriRemoteTapToClick: Bool {
     didSet { defaults.set(siriRemoteTapToClick, forKey: Keys.siriRemoteTapToClick) }
+  }
+
+  /// Whether circling the clickpad's rim scrolls, the way a click wheel
+  /// does. The middle of the pad still moves the pointer.
+  var siriRemoteRingScroll: Bool {
+    didSet { defaults.set(siriRemoteRingScroll, forKey: Keys.siriRemoteRingScroll) }
   }
 
   /// What each Siri Remote button does. Buttons left on "Leave to macOS"
@@ -261,6 +268,7 @@ final class AppSettings {
     let storedSpeed = defaults.object(forKey: Keys.siriRemoteTrackpadSpeed) as? Double
     siriRemoteTrackpadSpeed = storedSpeed ?? 620
     siriRemoteTapToClick = defaults.object(forKey: Keys.siriRemoteTapToClick) as? Bool ?? true
+    siriRemoteRingScroll = defaults.object(forKey: Keys.siriRemoteRingScroll) as? Bool ?? true
     dictationHistoryFolder = (defaults.string(forKey: Keys.historyFolder)).map { URL(filePath: $0) }
     voiceVisual = Self.stored(in: defaults, key: Keys.voiceVisual) ?? .waveform
     waveformStyle = Self.stored(in: defaults, key: Keys.waveformStyle) ?? .chartLine

@@ -81,6 +81,18 @@ struct SiriRemoteSettingsView: View {
         .disabled(!settings.siriRemoteTrackpadEnabled)
 
         SettingsRow(
+          title: "Circle the rim to scroll",
+          description: "Trace the outer edge of the pad to scroll, the way a "
+            + "click wheel does. The middle of the pad still moves the "
+            + "pointer, and where your finger lands decides which it is."
+        ) {
+          Toggle("Circle the rim to scroll", isOn: $settings.siriRemoteRingScroll)
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+        .disabled(!settings.siriRemoteTrackpadEnabled)
+
+        SettingsRow(
           title: "Tap to click",
           description: "A quick touch that does not travel clicks, without "
             + "pressing the pad down."

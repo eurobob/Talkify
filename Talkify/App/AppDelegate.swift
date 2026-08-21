@@ -214,6 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     installVoiceHelperIfNeeded()
     remoteCursor.speed = settings.siriRemoteTrackpadSpeed
     remoteCursor.isTapToClickEnabled = settings.siriRemoteTapToClick
+    remoteCursor.isRingScrollEnabled = settings.siriRemoteRingScroll
     applyRemoteButtons()
     applyRemoteTouchpad(enabled: settings.siriRemoteTrackpadEnabled)
   }
@@ -361,6 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       _ = settings.siriRemoteTrackpadEnabled
       _ = settings.siriRemoteTrackpadSpeed
       _ = settings.siriRemoteTapToClick
+      _ = settings.siriRemoteRingScroll
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         self?.applyRemoteInput()

@@ -31,6 +31,9 @@ final class RemoteCursor {
   /// Whether a quick touch with no travel counts as a click.
   var isTapToClickEnabled = true
 
+  /// Whether circling the pad's rim scrolls, the way a click wheel does.
+  var isRingScrollEnabled = true
+
   /// How much a fast finger is amplified. Kept gentle: the pad is small
   /// enough that a steep curve makes the last few points of travel
   /// impossible to control.
@@ -60,6 +63,11 @@ final class RemoteCursor {
 
   private var lastPosition: CGPoint?
   private var lastIdentifier: Int?
+  private var ring = RingScroll()
+  /// Whether this gesture is scrolling, decided where the finger landed and
+  /// kept until it lifts. Switching mode mid-stroke would mean a hand
+  /// drifting inwards silently stopped scrolling and started pointing.
+  private var isRingGesture = false
   private var framesSinceContact = 0
   /// The state filter is based on a layout that is not published, so it is
   /// checked rather than trusted: if no frame ever reports the settled
@@ -114,6 +122,11 @@ final class RemoteCursor {
       touchBegan = Date()
       travelled = 0
       framesSinceContact = 0
+      // Where the finger lands decides what the gesture is, and it does not
+      // change afterwards.
+      isRingGesture = isRingScrollEnabled
+        && RingScroll.isOnRing(x: position.x, y: position.y)
+      ring.reset()
     }
     framesSinceContact += 1
 
@@ -124,6 +137,15 @@ final class RemoteCursor {
     var deltaY = -(position.y - lastPosition.y)
     let distance = (deltaX * deltaX + deltaY * deltaY).squareRoot()
     travelled += distance
+
+    if isRingGesture {
+      // The rim scrolls rather than points. Still subject to settling, so a
+      // finger landing on the rim does not fling the page.
+      guard framesSinceContact > settlingFrames, !isFrozen else { return }
+      let lines = ring.accept(x: position.x, y: position.y)
+      if lines != 0 { scroll(lines: lines) }
+      return
+    }
 
     // A step this large is not a finger. Resynchronising to the new
     // position, rather than moving by the difference, is what turns a
@@ -170,7 +192,12 @@ final class RemoteCursor {
       touchBegan = nil
       framesSinceContact = 0
       travelled = 0
+      isRingGesture = false
+      ring.reset()
     }
+
+    // A circle is not a tap, however briefly it was drawn.
+    guard !isRingGesture else { return }
 
     guard isTapToClickEnabled,
           !isDragging,
@@ -200,6 +227,18 @@ final class RemoteCursor {
       mouseType: type,
       mouseCursorPosition: target,
       mouseButton: .left
+    ) else { return }
+    event.post(tap: .cghidEventTap)
+  }
+
+  private func scroll(lines: Int) {
+    guard let event = CGEvent(
+      scrollWheelEvent2Source: nil,
+      units: .line,
+      wheelCount: 1,
+      wheel1: Int32(lines),
+      wheel2: 0,
+      wheel3: 0
     ) else { return }
     event.post(tap: .cghidEventTap)
   }
