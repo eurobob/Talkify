@@ -48,6 +48,13 @@ enum RemoteCommandRunner {
     case let .scroll(lines):
       scroll(lines: lines)
       return .done(lines < 0 ? "Scrolling down" : "Scrolling up")
+
+    case let .arrangeWindow(arrangement):
+      switch WindowMover.arrange(arrangement) {
+      case let .success(title): return .done(title)
+      case .failure(.noFocusedWindow): return .done("No window to move")
+      case .failure(.refused): return .done("That window will not move")
+      }
     }
   }
 

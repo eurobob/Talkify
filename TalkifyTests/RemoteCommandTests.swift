@@ -82,3 +82,108 @@ struct RemoteCommandTests {
     #expect(KeyBinding.commandShift("z").modifiers.contains(.maskShift))
   }
 }
+
+/// The parameterised commands, which are the ones that make voice control
+/// feel like using a computer rather than reciting a list.
+struct RemoteCommandParameterTests {
+  @Test func tabsAreReachedByNumber() {
+    #expect(RemoteCommandParser.command(from: "tab two") == .press(.command("2")))
+    #expect(RemoteCommandParser.command(from: "go to tab 3") == .press(.command("3")))
+    #expect(RemoteCommandParser.command(from: "switch to tab five") == .press(.command("5")))
+  }
+
+  /// "new tab" and "close tab" are their own commands and must not be read
+  /// as numbered ones, or a mis-heard number would open something instead
+  /// of closing it.
+  @Test func aNumberedTabNeedsTabToBeTheSubject() {
+    #expect(RemoteCommandParser.command(from: "new tab") == .press(.command("t")))
+    #expect(RemoteCommandParser.command(from: "close tab") == .press(.command("w")))
+    #expect(RemoteCommandParser.command(from: "tab") == .press(.plain(48, label: "⇥")))
+  }
+
+  @Test func windowsAreArrangedByName() {
+    #expect(RemoteCommandParser.command(from: "left half") == .arrangeWindow(.leftHalf))
+    #expect(RemoteCommandParser.command(from: "right") == .arrangeWindow(.rightHalf))
+    #expect(RemoteCommandParser.command(from: "top left") == .arrangeWindow(.topLeft))
+    #expect(RemoteCommandParser.command(from: "maximise") == .arrangeWindow(.fill))
+    #expect(RemoteCommandParser.command(from: "left two thirds") == .arrangeWindow(.leftTwoThirds))
+  }
+
+  /// People do not agree on what these are called, and being made to learn
+  /// one wording is what makes voice control feel like an obstacle.
+  @Test func anArrangementAnswersToSeveralNames() {
+    #expect(RemoteCommandParser.command(from: "center") == .arrangeWindow(.centre))
+    #expect(RemoteCommandParser.command(from: "centre") == .arrangeWindow(.centre))
+    #expect(RemoteCommandParser.command(from: "maximize") == .arrangeWindow(.fill))
+    #expect(RemoteCommandParser.command(from: "fill the screen") == .arrangeWindow(.fill))
+  }
+
+  /// Nothing that throws away work the user cannot get back should be one
+  /// mis-hearing away.
+  @Test func thereIsNoCommandThatClosesEverything() {
+    #expect(RemoteCommandParser.command(from: "close everything") == nil)
+  }
+}
+
+/// A window put slightly off screen is the difference between a feature
+/// people use and one they stop trusting, so the arithmetic is pinned.
+struct WindowArrangementTests {
+  // A width that does not divide by three, on purpose.
+  private let screen = CGRect(x: 0, y: 25, width: 1_601, height: 975)
+
+  @Test func halvesDivideTheUsableScreen() {
+    let left = WindowArrangement.leftHalf.frame(in: screen)
+    let right = WindowArrangement.rightHalf.frame(in: screen)
+    #expect(left.maxX == right.minX)
+    #expect(abs(left.width - right.width) <= 1)
+    #expect(left.minX == screen.minX)
+    #expect(right.maxX == screen.maxX)
+    #expect(left.height == screen.height)
+  }
+
+  /// Thirds must tile exactly. A rounding error here leaves a visible strip
+  /// of desktop between two windows.
+  @Test func thirdsTileWithoutAGap() {
+    let left = WindowArrangement.leftThird.frame(in: screen)
+    let middle = WindowArrangement.middleThird.frame(in: screen)
+    let right = WindowArrangement.rightThird.frame(in: screen)
+    #expect(left.maxX == middle.minX)
+    #expect(middle.maxX == right.minX)
+    #expect(right.maxX == screen.maxX)
+  }
+
+  /// Every arrangement has to stay inside the usable screen, or the window
+  /// lands under the menu bar or off the edge.
+  @Test func nothingLandsOffScreen() {
+    for arrangement in WindowArrangement.allCases {
+      let frame = arrangement.frame(in: screen)
+      #expect(frame.minX >= screen.minX, "\(arrangement.rawValue) starts left of the screen")
+      #expect(frame.minY >= screen.minY, "\(arrangement.rawValue) starts above the screen")
+      #expect(frame.maxX <= screen.maxX, "\(arrangement.rawValue) runs off the right")
+      #expect(frame.maxY <= screen.maxY, "\(arrangement.rawValue) runs off the bottom")
+      #expect(frame.width > 0 && frame.height > 0, "\(arrangement.rawValue) is empty")
+    }
+  }
+
+  @Test func fillingUsesTheWholeUsableScreen() {
+    #expect(WindowArrangement.fill.frame(in: screen) == screen)
+  }
+
+  /// Only centring keeps the window's own size; everything else is a shape.
+  @Test func onlyCentringKeepsTheSize() {
+    for arrangement in WindowArrangement.allCases {
+      #expect(arrangement.keepsSize == (arrangement == .centre))
+    }
+  }
+
+  /// Every arrangement must be reachable by speech, or it may as well not
+  /// exist.
+  @Test func everyArrangementHasAPhrase() {
+    for arrangement in WindowArrangement.allCases {
+      #expect(!arrangement.phrases.isEmpty)
+      for phrase in arrangement.phrases {
+        #expect(WindowArrangement.named(phrase) != nil, "\(phrase) reaches nothing")
+      }
+    }
+  }
+}

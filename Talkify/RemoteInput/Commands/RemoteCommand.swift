@@ -13,6 +13,7 @@ enum RemoteCommand: Equatable, Sendable {
   case press(KeyBinding)
   case missionControl
   case scroll(lines: Int)
+  case arrangeWindow(WindowArrangement)
 
   /// What to say back after running it. Short, because it is read at a
   /// glance while the remote is still in the hand.
@@ -24,6 +25,7 @@ enum RemoteCommand: Equatable, Sendable {
     case let .press(binding): binding.label
     case .missionControl: "Mission Control"
     case let .scroll(lines): lines < 0 ? "Scrolling down" : "Scrolling up"
+    case let .arrangeWindow(arrangement): arrangement.title
     }
   }
 }
@@ -90,7 +92,6 @@ enum RemoteCommandParser {
     ("hide this", .press(.command("h"))),
     ("hide others", .press(.modified(4, flags: [.maskCommand, .maskAlternate], label: "⌥ ⌘ H"))),
     ("quit this", .press(.command("q"))),
-    ("close everything", .press(.modified(13, flags: [.maskCommand, .maskAlternate], label: "⌥ ⌘ W"))),
     ("settings", .press(.command(","))),
     ("preferences", .press(.command(","))),
 
@@ -129,11 +130,25 @@ enum RemoteCommandParser {
     ("scroll to bottom", .press(.modified(125, flags: .maskCommand, label: "⌘ ↓"))),
   ]
 
+  /// Spoken numbers, because a transcript says "two" as often as "2".
+  private static let numbers: [String: Int] = [
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+  ]
+
   /// Reads a transcript. Returns nil when nothing matched, which is a
   /// result rather than a failure: the user is told, and nothing happens.
   static func command(from transcript: String) -> RemoteCommand? {
     let text = normalise(transcript)
     guard !text.isEmpty else { return nil }
+
+    // Before the verbs: "go to tab two" starts with a switching verb and
+    // would otherwise be read as an application called "tab two".
+    if let tab = numberedTab(in: text) { return tab }
+    if let arrangement = WindowArrangement.named(text) {
+      return .arrangeWindow(arrangement)
+    }
 
     // Longest phrase first, so "close this window" is not matched as
     // "close" with "this window" left over.
@@ -158,6 +173,25 @@ enum RemoteCommandParser {
       }
     }
     return nil
+  }
+
+  /// "tab two", "go to tab 3", "switch to tab five". Numbered tabs are
+  /// ⌘1 through ⌘9 in every application that has tabs at all, and the
+  /// ninth is the last one rather than the ninth in most of them.
+  private static func numberedTab(in text: String) -> RemoteCommand? {
+    let words = text.split(separator: " ").map(String.init)
+    guard let tabIndex = words.firstIndex(of: "tab"),
+          tabIndex + 1 < words.count,
+          let number = numbers[words[tabIndex + 1]]
+    else { return nil }
+
+    // Only when "tab" is the subject: "new tab" and "close tab" are their
+    // own commands and must not be read as a numbered one.
+    let leading = words[..<tabIndex].joined(separator: " ")
+    guard leading.isEmpty || switchVerbs.contains(leading) || leading == "go" else {
+      return nil
+    }
+    return .press(.command(String(number)))
   }
 
   /// Lowercased, stripped of punctuation and filler, single-spaced.
