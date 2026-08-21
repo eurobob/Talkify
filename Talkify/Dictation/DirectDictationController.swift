@@ -17,6 +17,10 @@ final class DirectDictationController {
   /// A language model downloading, as a locale identifier and progress (0…1),
   /// or nil progress once it finishes. Settings shows it on the language row.
   var onLanguageDownloadChange: ((String, Double?) -> Void)?
+  /// A finished command session's words. Set while the remote is listening
+  /// for a command rather than for text, and the reason a command is never
+  /// typed into whatever the user was editing.
+  var onCommandTranscript: ((String) -> Void)?
 
   private static let noSpeechTimeout = Duration.seconds(15)
 
@@ -47,6 +51,10 @@ final class DirectDictationController {
   /// Which trigger opened the running session, so the right microphone is
   /// chosen and the other source cannot end it.
   private var activeSource: TriggerSource = .keyboard
+  /// True while the running session's words are a command rather than
+  /// text. Captured when the session opens, so switching mid-session is not
+  /// possible and a command can never be pasted by accident.
+  private var isCommandSession = false
 
   convenience init(
     settings: AppSettings,
@@ -220,6 +228,40 @@ final class DirectDictationController {
     }
   }
 
+  /// Ends a session the remote's Siri button began by holding.
+  ///
+  /// Finishes unconditionally rather than going through the release rules.
+  /// Those latch a session whose press was shorter than the tap threshold,
+  /// which is right for a key: a quick tap means "keep listening". The
+  /// remote's gesture has already decided this press was a hold, and a hold
+  /// that latched instead of finishing would leave the remote recording
+  /// with nothing on screen saying so.
+  func endHeldRemoteSession() {
+    guard machine.isSessionActive, activeSource == .siriRemote, !isCommandSession else {
+      return
+    }
+    send(.menuToggled(now: .now))
+  }
+
+  /// Starts a session whose words are a command. The remote's double tap
+  /// opens it; a further tap ends it through `endCommandSession`.
+  func beginCommandSession() {
+    guard !machine.isSessionActive else { return }
+    activeSlot = .primary
+    activeSource = .siriRemote
+    isCommandSession = true
+    send(.menuToggled(now: .now))
+  }
+
+  /// Ends a command session and sends its words to `onCommandTranscript`.
+  func endCommandSession() {
+    guard machine.isSessionActive, isCommandSession else { return }
+    send(.menuToggled(now: .now))
+  }
+
+  /// True while the running session is listening for a command.
+  var isRunningCommandSession: Bool { isCommandSession && machine.isSessionActive }
+
   func toggleFromMenu() {
     // The menu item has no language of its own, so it dictates in the first.
     if !machine.isSessionActive {
@@ -335,8 +377,16 @@ final class DirectDictationController {
     }
   }
 
+  /// Clears the command flag whenever a session ends by any route. A
+  /// cancelled command that left it set would send the next dictation into
+  /// the parser instead of the document.
+  private func clearCommandSessionIfEnded() {
+    if !machine.isSessionActive { isCommandSession = false }
+  }
+
   private func send(_ action: DictationSessionMachine.Action) {
     perform(machine.reduce(action))
+    clearCommandSessionIfEnded()
   }
 
   private func perform(_ effects: [DictationSessionMachine.Effect]) {
@@ -525,6 +575,16 @@ final class DirectDictationController {
             session.historyFolder
           )
         }
+        // A command's words are an instruction, not a document. They must
+        // never reach the insertion path: the failure mode there is typing
+        // "quit Safari" into whatever the user was writing.
+        if isCommandSession {
+          isCommandSession = false
+          send(.sessionEnded)
+          onCommandTranscript?(text)
+          return
+        }
+
         let outcome = await dependencies.insertText(
           text, focusedTarget, session.insertionDestination
         )

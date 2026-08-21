@@ -16,6 +16,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var remoteButtonMonitor: SiriRemoteButtonMonitor?
   private var remoteTouchpad: SiriRemoteTouchpad?
   private let remoteCursor = RemoteCursor()
+  /// Decides whether a press of the Siri button is a hold, half of a double
+  /// tap, or the full stop on a spoken command.
+  private var remoteGesture = RemoteCommandGesture()
+  /// Fires once a press has lasted long enough to be a hold. Dictation
+  /// starts there rather than on the press, so the first tap of a double
+  /// tap never opens a session that must be thrown away.
+  private var remoteHoldTask: Task<Void, Never>?
   private let settingsRuntimeState = SettingsRuntimeState()
   private let updaterService = SparkleUpdaterService()
 
@@ -116,6 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // the event tap and fires this only while no session is active.
     dictationController.onReadAloudTriggered = { [weak readAloudController] in
       readAloudController?.toggle()
+    }
+    dictationController.onCommandTranscript = { [weak self] transcript in
+      self?.runRemoteCommand(transcript)
     }
 
     // Compiles the HUD's shaders now, so the cost does not land on the first
@@ -268,6 +278,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     hudController?.showMessage("The Siri Remote's clickpad is unavailable", on: nil)
   }
 
+  private func handleSiriButton(isPress: Bool) {
+    let events = isPress ? remoteGesture.press() : remoteGesture.release()
+
+    if isPress {
+      // Armed after the tap threshold, cancelled by the release. A press
+      // that ends first was a tap and never becomes a hold.
+      remoteHoldTask?.cancel()
+      remoteHoldTask = Task { @MainActor [weak self] in
+        try? await Task.sleep(for: .seconds(RemoteCommandGesture.tapDuration))
+        guard !Task.isCancelled, let self else { return }
+        for event in remoteGesture.holdElapsed(at: Date()) {
+          perform(event)
+        }
+      }
+    } else {
+      remoteHoldTask?.cancel()
+      remoteHoldTask = nil
+    }
+
+    for event in events {
+      perform(event)
+    }
+  }
+
+  private func perform(_ event: RemoteCommandGesture.Event) {
+    guard let dictationController else { return }
+    RemoteInputLog.logger.info("gesture \(String(describing: event), privacy: .public)")
+
+    switch event {
+    case .dictationBegan:
+      dictationController.handle(.triggerPressed(.primary), source: .siriRemote)
+    case .dictationEnded:
+      dictationController.endHeldRemoteSession()
+    case .commandArmed:
+      // Nothing is recorded yet: the remote's microphone only transmits
+      // while the button is down, so the session waits for the hold.
+      hudController?.showMessage("Hold and say a command", on: nil)
+    case .commandBegan:
+      dictationController.beginCommandSession()
+    case .commandCommitted:
+      dictationController.endCommandSession()
+    case .commandCancelled:
+      hudController?.showMessage("Command cancelled", on: nil)
+    }
+  }
+
+  /// Runs what the user said, or says why it did not.
+  private func runRemoteCommand(_ transcript: String) {
+    guard let command = RemoteCommandParser.command(from: transcript) else {
+      let spoken = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+      RemoteInputLog.logger.info("command not understood: \(spoken, privacy: .public)")
+      hudController?.showMessage(
+        spoken.isEmpty ? "Nothing heard" : "Didn't understand \"\(spoken)\"",
+        on: nil
+      )
+      return
+    }
+
+    RemoteInputLog.logger.info("command \(String(describing: command), privacy: .public)")
+    switch RemoteCommandRunner.run(command) {
+    case let .done(message):
+      hudController?.showMessage(message, on: nil)
+    case .notUnderstood:
+      hudController?.showMessage("Didn't understand that", on: nil)
+    case let .noSuchApp(name):
+      hudController?.showMessage("No app called \"\(name)\"", on: nil)
+    }
+  }
+
   private static func message(for result: SiriRemoteButtonMonitor.StartResult) -> String {
     switch result {
     case .started:
@@ -314,14 +393,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       isPress = false
     }
 
-    // The Siri button dictates and is not configurable. It is the only
-    // button with a microphone behind it, and it needs the release as well
-    // as the press, which no bound keystroke does.
+    // The Siri button is not configurable: it is the one with a microphone
+    // behind it. Held it dictates, double tapped it listens for a command,
+    // and the gesture decides which.
     guard button != .siri else {
-      dictationController.handle(
-        isPress ? .triggerPressed(.primary) : .triggerReleased(.primary),
-        source: .siriRemote
-      )
+      handleSiriButton(isPress: isPress)
       return
     }
 
@@ -386,6 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    remoteHoldTask?.cancel()
     remoteTouchpad?.stop()
     remoteButtonMonitor?.stop()
     dictationController?.stop()
