@@ -420,7 +420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       dictationController.handle(.cancelPressed, source: .siriRemote)
     case .none:
       break
-    case .missionControl, .applicationWindows, .showDesktop, .spotlight, .sendKeys:
+    case .missionControl, .sendKeys:
       // Some of these the window server will not accept as a keystroke,
       // however faithfully it is synthesised, and opens its own way instead.
       if RemoteWindowAction.isHandledHere(action) {

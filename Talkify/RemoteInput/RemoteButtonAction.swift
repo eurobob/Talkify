@@ -21,9 +21,6 @@ enum RemoteButtonAction: Sendable, Equatable {
   case none
   case cancelDictation
   case missionControl
-  case applicationWindows
-  case showDesktop
-  case spotlight
   case sendKeys(KeyBinding)
 
   /// The choice shown in the picker, without the recorded combination.
@@ -31,9 +28,6 @@ enum RemoteButtonAction: Sendable, Equatable {
     case none
     case cancelDictation
     case missionControl
-    case applicationWindows
-    case showDesktop
-    case spotlight
     case sendKeys
 
     var title: String {
@@ -41,9 +35,6 @@ enum RemoteButtonAction: Sendable, Equatable {
       case .none: "Leave to macOS"
       case .cancelDictation: "Cancel dictation"
       case .missionControl: "Mission Control"
-      case .applicationWindows: "Application windows"
-      case .showDesktop: "Show desktop"
-      case .spotlight: "Spotlight"
       case .sendKeys: "Send keys…"
       }
     }
@@ -54,9 +45,6 @@ enum RemoteButtonAction: Sendable, Equatable {
     case .none: .none
     case .cancelDictation: .cancelDictation
     case .missionControl: .missionControl
-    case .applicationWindows: .applicationWindows
-    case .showDesktop: .showDesktop
-    case .spotlight: .spotlight
     case .sendKeys: .sendKeys
     }
   }
@@ -69,9 +57,6 @@ enum RemoteButtonAction: Sendable, Equatable {
     switch self {
     case .none, .cancelDictation: nil
     case .missionControl: .missionControl
-    case .applicationWindows: .applicationWindows
-    case .showDesktop: .showDesktop
-    case .spotlight: .spotlight
     case let .sendKeys(binding): binding
     }
   }
@@ -90,9 +75,6 @@ enum RemoteButtonAction: Sendable, Equatable {
     case .none: .none
     case .cancelDictation: .cancelDictation
     case .missionControl: .missionControl
-    case .applicationWindows: .applicationWindows
-    case .showDesktop: .showDesktop
-    case .spotlight: .spotlight
     case .sendKeys: .sendKeys(recordedKeyBinding ?? recorded)
     }
   }
@@ -105,18 +87,6 @@ extension KeyBinding {
   static let missionControl = KeyBinding(
     keyCode: 126, modifierFlags: CGEventFlags.maskControl.rawValue,
     isModifierKey: false, label: "⌃ ↑", keyEquivalent: ""
-  )
-  static let applicationWindows = KeyBinding(
-    keyCode: 125, modifierFlags: CGEventFlags.maskControl.rawValue,
-    isModifierKey: false, label: "⌃ ↓", keyEquivalent: ""
-  )
-  static let showDesktop = KeyBinding(
-    keyCode: 103, modifierFlags: 0,
-    isModifierKey: false, label: "F11", keyEquivalent: ""
-  )
-  static let spotlight = KeyBinding(
-    keyCode: 49, modifierFlags: CGEventFlags.maskCommand.rawValue,
-    isModifierKey: false, label: "⌘ space", keyEquivalent: " "
   )
 }
 
@@ -162,9 +132,6 @@ struct RemoteButtonMap: Sendable, Equatable {
       case .none: decoded[button] = RemoteButtonAction.none
       case .cancelDictation: decoded[button] = .cancelDictation
       case .missionControl: decoded[button] = .missionControl
-      case .applicationWindows: decoded[button] = .applicationWindows
-      case .showDesktop: decoded[button] = .showDesktop
-      case .spotlight: decoded[button] = .spotlight
       case .sendKeys:
         // A send-keys entry with no combination recorded would be a button
         // that does nothing while claiming otherwise.

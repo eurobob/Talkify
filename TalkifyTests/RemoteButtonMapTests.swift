@@ -79,9 +79,6 @@ struct RemoteButtonMapTests {
   /// would be bound to nothing. Only the two app actions press no keys.
   @Test func everyNamedActionResolvesToAShortcut() {
     #expect(RemoteButtonAction.missionControl.keyBinding == .missionControl)
-    #expect(RemoteButtonAction.applicationWindows.keyBinding == .applicationWindows)
-    #expect(RemoteButtonAction.showDesktop.keyBinding == .showDesktop)
-    #expect(RemoteButtonAction.spotlight.keyBinding == .spotlight)
     #expect(RemoteButtonAction.sendKeys(cmdShiftFour).keyBinding == cmdShiftFour)
     #expect(RemoteButtonAction.none.keyBinding == nil)
     #expect(RemoteButtonAction.cancelDictation.keyBinding == nil)
