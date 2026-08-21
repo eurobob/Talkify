@@ -311,16 +311,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       dictationController.handle(.triggerPressed(.primary), source: .siriRemote)
     case .dictationEnded:
       dictationController.endHeldRemoteSession()
-    case .commandArmed:
-      // Nothing is recorded yet: the remote's microphone only transmits
-      // while the button is down, so the session waits for the hold.
-      hudController?.showMessage("Hold and say a command", on: nil)
     case .commandBegan:
       dictationController.beginCommandSession()
     case .commandCommitted:
       dictationController.endCommandSession()
-    case .commandCancelled:
-      hudController?.showMessage("Command cancelled", on: nil)
     }
   }
 

@@ -18,14 +18,10 @@ struct RemoteCommandGesture {
     /// Hold to dictate, exactly as before.
     case dictationBegan
     case dictationEnded
-    /// Two quick taps: the next hold speaks a command rather than text.
-    case commandArmed
-    /// The armed hold began. The microphone is live from here.
+    /// A tap, then a hold: this hold speaks a command rather than text.
     case commandBegan
-    /// The armed hold ended: run what was said.
+    /// That hold ended: run what was said.
     case commandCommitted
-    /// Armed, then nothing was held. The arming lapsed.
-    case commandCancelled
   }
 
   /// A press shorter than this is a tap rather than a hold. It is the same
@@ -38,35 +34,25 @@ struct RemoteCommandGesture {
   /// on a mouse.
   static let doubleTapWindow: TimeInterval = 0.6
 
-  /// How long an arming lasts before it lapses. Long enough to bring the
-  /// remote up to the mouth, short enough that a forgotten double tap does
-  /// not turn a later dictation into a command.
-  static let armedWindow: TimeInterval = 5
-
   private var pressedAt: Date?
   private var lastTapAt: Date?
   private var isDictating = false
   private var isSpeakingCommand = false
-  private var armedAt: Date?
 
   init() {}
 
-  /// True once a double tap has armed a command and the hold has not
-  /// happened yet.
-  var isArmedForCommand: Bool { armedAt != nil }
-
-  /// True while a command is actually being spoken.
+  /// True while a command is being spoken.
   var isSpeakingACommand: Bool { isSpeakingCommand }
+
+  /// True when the next hold would speak a command: a tap has just landed
+  /// and its window is still open.
+  func isArmedForCommand(at now: Date = Date()) -> Bool {
+    guard let lastTapAt else { return false }
+    return now.timeIntervalSince(lastTapAt) < Self.doubleTapWindow
+  }
 
   mutating func press(at now: Date = Date()) -> [Event] {
     pressedAt = now
-
-    // An arming that was never used lapses rather than waiting forever for
-    // a hold the user has forgotten about.
-    if let armedAt, now.timeIntervalSince(armedAt) > Self.armedWindow {
-      self.armedAt = nil
-      return [.commandCancelled]
-    }
     return []
   }
 
@@ -89,13 +75,8 @@ struct RemoteCommandGesture {
 
     guard held < Self.tapDuration else { return [] }
 
-    // A tap. The second one inside the window arms a command, which the
-    // next hold speaks.
-    if let lastTapAt, now.timeIntervalSince(lastTapAt) < Self.doubleTapWindow {
-      self.lastTapAt = nil
-      armedAt = now
-      return [.commandArmed]
-    }
+    // A tap on its own means nothing yet. It is the first half of a tap
+    // and hold, and what follows decides.
     lastTapAt = now
     return []
   }
@@ -104,16 +85,23 @@ struct RemoteCommandGesture {
   /// starts here rather than on the press, so the first tap of a double tap
   /// never opens a session that has to be thrown away.
   mutating func holdElapsed(at now: Date = Date()) -> [Event] {
-    guard pressedAt != nil, !isDictating, !isSpeakingCommand else { return [] }
+    guard let pressedAt, !isDictating, !isSpeakingCommand else { return [] }
+
+    // A tap immediately before this press makes the hold a command. This is
+    // tap-and-hold, the same gesture a trackpad uses for drag: two presses,
+    // the second one held — not three.
+    //
+    // The window is measured to when this press began, not to now, so a
+    // long command is not mistaken for a slow second tap.
+    let followsTap = lastTapAt.map {
+      pressedAt.timeIntervalSince($0) < Self.doubleTapWindow
+    } ?? false
     lastTapAt = nil
 
-    // Armed: this hold speaks a command instead of dictating.
-    if let armedAt, now.timeIntervalSince(armedAt) <= Self.armedWindow {
-      self.armedAt = nil
+    if followsTap {
       isSpeakingCommand = true
       return [.commandBegan]
     }
-    armedAt = nil
 
     isDictating = true
     return [.dictationBegan]
@@ -125,7 +113,6 @@ struct RemoteCommandGesture {
     let wasSpeakingCommand = isSpeakingCommand
     pressedAt = nil
     lastTapAt = nil
-    armedAt = nil
     isDictating = false
     isSpeakingCommand = false
     if wasSpeakingCommand { return [.commandCommitted] }
