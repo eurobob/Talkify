@@ -212,6 +212,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     installVoiceHelperIfNeeded()
+    // The daemon starts at boot on its own, but it serves nobody unless
+    // this app is running.
+    LoginItem.setEnabled(settings.startAtLogin)
     remoteCursor.speed = settings.siriRemoteTrackpadSpeed
     remoteCursor.isTapToClickEnabled = settings.siriRemoteTapToClick
     remoteCursor.isRingScrollEnabled = settings.siriRemoteRingScroll
@@ -363,6 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       _ = settings.siriRemoteTrackpadSpeed
       _ = settings.siriRemoteTapToClick
       _ = settings.siriRemoteRingScroll
+      _ = settings.startAtLogin
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         self?.applyRemoteInput()

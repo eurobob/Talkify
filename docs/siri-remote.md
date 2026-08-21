@@ -111,6 +111,19 @@ fragment, so reassembly is not optional.
 libopus comes from Homebrew and is resolved at runtime. No libopus, no
 dictation from the remote.
 
+## Starting up
+
+Both halves start on their own, and both are needed:
+
+- The daemon is `RunAtLoad` and `KeepAlive`, so it starts at boot and comes
+  back if it crashes.
+- The app registers itself as a login item through `SMAppService.mainApp`,
+  controlled by the **Start at login** setting.
+
+A daemon without the app is not a working remote: the app is what reads the
+buttons, moves the pointer and runs the commands. macOS may ask the user to
+approve either of them under Login Items & Extensions the first time.
+
 ## When it stops working
 
 ```sh

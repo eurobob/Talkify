@@ -41,6 +41,7 @@ final class AppSettings {
     static let siriRemoteTrackpadSpeed = "siriRemoteTrackpadSpeed"
     static let siriRemoteTapToClick = "siriRemoteTapToClick"
     static let siriRemoteRingScroll = "siriRemoteRingScroll"
+    static let startAtLogin = "startAtLogin"
   }
 
   @ObservationIgnored
@@ -124,6 +125,14 @@ final class AppSettings {
   /// does. The middle of the pad still moves the pointer.
   var siriRemoteRingScroll: Bool {
     didSet { defaults.set(siriRemoteRingScroll, forKey: Keys.siriRemoteRingScroll) }
+  }
+
+  /// Whether Talkify starts when the user logs in. On by default once the
+  /// remote is in use: the helper daemon starts at boot on its own, but it
+  /// serves nobody unless the app is running, and a menu-bar app with no
+  /// window is easy to forget to open.
+  var startAtLogin: Bool {
+    didSet { defaults.set(startAtLogin, forKey: Keys.startAtLogin) }
   }
 
   /// What each Siri Remote button does. Buttons left on "Leave to macOS"
@@ -269,6 +278,7 @@ final class AppSettings {
     siriRemoteTrackpadSpeed = storedSpeed ?? 620
     siriRemoteTapToClick = defaults.object(forKey: Keys.siriRemoteTapToClick) as? Bool ?? true
     siriRemoteRingScroll = defaults.object(forKey: Keys.siriRemoteRingScroll) as? Bool ?? true
+    startAtLogin = defaults.object(forKey: Keys.startAtLogin) as? Bool ?? true
     dictationHistoryFolder = (defaults.string(forKey: Keys.historyFolder)).map { URL(filePath: $0) }
     voiceVisual = Self.stored(in: defaults, key: Keys.voiceVisual) ?? .waveform
     waveformStyle = Self.stored(in: defaults, key: Keys.waveformStyle) ?? .chartLine

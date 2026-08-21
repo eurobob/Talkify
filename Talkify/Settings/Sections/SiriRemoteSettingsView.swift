@@ -30,6 +30,17 @@ struct SiriRemoteSettingsView: View {
         }
 
         SettingsRow(
+          title: "Start at login",
+          description: "The microphone helper starts at boot on its own, but "
+            + "it feeds nothing unless Talkify is running. Without this the "
+            + "remote is dead after every restart until you open the app."
+        ) {
+          Toggle("Start at login", isOn: $settings.startAtLogin)
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+
+        SettingsRow(
           title: "Microphone helper",
           description: helperDescription
         ) {
