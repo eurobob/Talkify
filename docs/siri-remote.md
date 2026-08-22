@@ -166,10 +166,25 @@ line. Whichever is missing names the layer at fault.
 app both seize the button interface, and while either holds it every other
 app sees nothing. `opencheck` in the spike folder says whether it is free.
 
+## Typing exact text
+
+`type hello world` types it. Spoken punctuation becomes characters, and a
+symbol attaches to the word after it, so `type slash model` is `/model`
+rather than `/ model` — a slash command with a space in it is not a slash
+command. The symbol table is in `RemoteCommandParser`.
+
+The text comes from the raw transcript, not the normalised one: stripping
+filler and punctuation is right for a command and wrong for the user's own
+words. `type` is matched before every other rule, or `type open safari`
+would launch a browser.
+
+Characters are typed as characters rather than key codes. A key code is a
+position on the keyboard, so building text from them means knowing the
+layout and gives up on anything outside it.
+
 ## Known gaps
 
 - No multi-display command: "move to the other screen" is unimplemented.
-- No "type this" command to dictate into a field from command mode.
 - `RemoteCursor` and `RemoteVoiceInput` have no tests. Their pure parts —
   `RingScroll`, `WindowArrangement`, the parser, the gesture — do.
 - The helper has no uninstall path in the UI.

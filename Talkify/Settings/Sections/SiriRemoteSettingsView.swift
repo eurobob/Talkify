@@ -232,7 +232,7 @@ struct SiriRemoteSettingsView: View {
         let current = settings.siriRemoteButtonMap[button]
         settings.siriRemoteButtonMap[button] = current.withKind(
           kind,
-          recorded: current.recordedKeyBinding ?? .optionEscape
+          recorded: current.recordedKeyBinding ?? .unrecorded
         )
         if kind != .sendKeys, recordingButton == button { disarmRecorder() }
       }

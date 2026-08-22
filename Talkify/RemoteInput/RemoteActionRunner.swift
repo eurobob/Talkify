@@ -38,6 +38,13 @@ enum RemoteActionRunner {
   static func send(_ binding: KeyBinding) {
     // A bare modifier has nothing to press. The recorder refuses to record
     // one for a remote button, and this is the matching guard.
+    // Nothing recorded yet: the button stays inert rather than pressing
+    // whatever the placeholder happened to be.
+    guard !binding.isUnrecorded else {
+      RemoteInputLog.logger.info("button has no combination recorded yet")
+      return
+    }
+
     guard !binding.isModifierKey else {
       RemoteInputLog.logger.error("refused a bare modifier: \(binding.label, privacy: .public)")
       return

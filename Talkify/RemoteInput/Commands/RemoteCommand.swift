@@ -14,6 +14,7 @@ enum RemoteCommand: Equatable, Sendable {
   case missionControl
   case scroll(lines: Int)
   case arrangeWindow(WindowArrangement)
+  case type(String)
 
   /// What to say back after running it. Short, because it is read at a
   /// glance while the remote is still in the hand.
@@ -26,6 +27,7 @@ enum RemoteCommand: Equatable, Sendable {
     case .missionControl: "Mission Control"
     case let .scroll(lines): lines < 0 ? "Scrolling down" : "Scrolling up"
     case let .arrangeWindow(arrangement): arrangement.title
+    case let .type(text): "Typed \"\(text)\""
     }
   }
 }
@@ -143,6 +145,11 @@ enum RemoteCommandParser {
     let text = normalise(transcript)
     guard !text.isEmpty else { return nil }
 
+    // Before everything, and from the raw transcript rather than the
+    // normalised one: what follows "type" is the user's text, and
+    // stripping its punctuation and its "the"s would mangle it.
+    if let typed = typedText(in: transcript) { return .type(typed) }
+
     // Before the verbs: "go to tab two" starts with a switching verb and
     // would otherwise be read as an application called "tab two".
     if let tab = numberedTab(in: text) { return tab }
@@ -173,6 +180,46 @@ enum RemoteCommandParser {
       }
     }
     return nil
+  }
+
+  /// Spoken punctuation, for text that has to be exact. A slash command
+  /// is the reason this exists: "/model" is heard as "slash model", and no
+  /// amount of dictation accuracy will produce the character itself.
+  private static let symbols: [String: String] = [
+    "slash": "/", "backslash": "\\", "dash": "-", "hyphen": "-",
+    "underscore": "_", "dot": ".", "period": ".", "comma": ",",
+    "colon": ":", "semicolon": ";", "at": "@", "hash": "#", "star": "*",
+    "plus": "+", "equals": "=", "question mark": "?", "exclamation": "!",
+  ]
+
+  /// "type hello world", "type slash model". Everything after the verb is
+  /// the text, taken from the transcript as spoken.
+  ///
+  /// A symbol word attaches to what follows it, so "slash model" is
+  /// "/model" rather than "/ model": a slash command with a space in it is
+  /// not a slash command.
+  private static func typedText(in transcript: String) -> String? {
+    let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lowered = trimmed.lowercased()
+    guard lowered == "type" || lowered.hasPrefix("type ") else { return nil }
+
+    let rest = trimmed.dropFirst("type".count).trimmingCharacters(in: .whitespaces)
+    guard !rest.isEmpty else { return nil }
+
+    var output = ""
+    var attachNext = false
+    for word in rest.split(separator: " ").map(String.init) {
+      let bare = word.trimmingCharacters(in: CharacterSet(charactersIn: ".,!?"))
+      if let symbol = symbols[bare.lowercased()] {
+        output += symbol
+        attachNext = true
+        continue
+      }
+      if !output.isEmpty, !attachNext { output += " " }
+      output += word
+      attachNext = false
+    }
+    return output.isEmpty ? nil : output
   }
 
   /// "tab two", "go to tab 3", "switch to tab five". Numbered tabs are

@@ -81,6 +81,20 @@ enum RemoteButtonAction: Sendable, Equatable {
 }
 
 extension KeyBinding {
+  /// The stand-in for a Send keys binding nobody has recorded yet.
+  ///
+  /// It presses nothing. The obvious placeholder — some real combination
+  /// the app already had lying about — makes an unrecorded button do
+  /// something arbitrary, and the one used here was Talkify's own Read
+  /// Aloud shortcut, so an unrecorded button toggled Read Aloud.
+  static let unrecorded = KeyBinding(
+    keyCode: -1, modifierFlags: 0, isModifierKey: false,
+    label: "Record…", keyEquivalent: ""
+  )
+
+  /// True when this binding has never been recorded and must not be sent.
+  var isUnrecorded: Bool { keyCode < 0 }
+
   /// The shortcuts macOS ships for the window and search commands. Virtual
   /// key codes are positions on the keyboard, not letters, so they hold for
   /// every layout.

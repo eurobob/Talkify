@@ -187,3 +187,54 @@ struct WindowArrangementTests {
     }
   }
 }
+
+/// Typing exists for slash commands: "/model" is heard as "slash model",
+/// and no amount of dictation accuracy produces the character itself.
+struct TypedTextTests {
+  @Test func typingTakesEverythingAfterTheVerb() {
+    #expect(RemoteCommandParser.command(from: "type hello world") == .type("hello world"))
+    #expect(RemoteCommandParser.command(from: "Type Hello There") == .type("Hello There"))
+  }
+
+  /// A symbol attaches to what follows it. "/ model" is not a slash
+  /// command; "/model" is.
+  @Test func spokenSymbolsBecomeCharacters() {
+    #expect(RemoteCommandParser.command(from: "type slash model") == .type("/model"))
+    #expect(RemoteCommandParser.command(from: "type slash clear") == .type("/clear"))
+    #expect(RemoteCommandParser.command(from: "type dash dash help") == .type("--help"))
+  }
+
+  /// The text is taken as spoken, not normalised: stripping filler and
+  /// punctuation is right for a command and wrong for the user's words.
+  @Test func typedTextKeepsItsFillerAndCase() {
+    #expect(RemoteCommandParser.command(from: "type please can you help") == .type("please can you help"))
+  }
+
+  @Test func typeAloneTypesNothing() {
+    #expect(RemoteCommandParser.command(from: "type") == nil)
+    #expect(RemoteCommandParser.command(from: "type   ") == nil)
+  }
+
+  /// "type" must win over everything, or "type open safari" would launch a
+  /// browser instead of typing the words.
+  @Test func typingBeatsTheOtherVerbs() {
+    #expect(RemoteCommandParser.command(from: "type open safari") == .type("open safari"))
+    #expect(RemoteCommandParser.command(from: "type tab two") == .type("tab two"))
+  }
+}
+
+/// An unrecorded Send keys binding must press nothing. The placeholder used
+/// to be a real combination the app had lying about — Read Aloud's — so an
+/// unrecorded button toggled Read Aloud.
+struct UnrecordedBindingTests {
+  @Test func anUnrecordedBindingIsMarkedAsSuch() {
+    #expect(KeyBinding.unrecorded.isUnrecorded)
+    #expect(!KeyBinding.command("c").isUnrecorded)
+    #expect(!KeyBinding.optionEscape.isUnrecorded)
+  }
+
+  @Test func theUnrecordedPlaceholderIsNotARealShortcut() {
+    #expect(KeyBinding.unrecorded.keyCode != KeyBinding.optionEscape.keyCode)
+    #expect(KeyBinding.unrecorded.modifierFlags == 0)
+  }
+}

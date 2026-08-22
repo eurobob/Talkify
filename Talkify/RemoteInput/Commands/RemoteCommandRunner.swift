@@ -49,6 +49,10 @@ enum RemoteCommandRunner {
       scroll(lines: lines)
       return .done(lines < 0 ? "Scrolling down" : "Scrolling up")
 
+    case let .type(text):
+      TextTyper.type(text)
+      return .done("Typed \"\(text)\"")
+
     case let .arrangeWindow(arrangement):
       switch WindowMover.arrange(arrangement) {
       case let .success(title): return .done(title)
