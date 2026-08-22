@@ -12,6 +12,14 @@ import SwiftUI
 struct KeyRecorderView<Label: View>: View {
   @Binding var keyBinding: KeyBinding
   let allowsBareModifier: Bool
+  /// Whether Escape is a key that can be recorded rather than the way out
+  /// of recording. It cancels by default, which is right for a shortcut
+  /// nobody would bind to Escape — and wrong for a remote button, where
+  /// Escape is one of the most useful things to send: it is what
+  /// interrupts a command-line tool.
+  ///
+  /// Where this is on, clicking the control again cancels instead.
+  var allowsEscape = false
   /// Owned by the caller so only one recorder is ever armed, and so a click on
   /// the drawn keyboard can finish a binding and disarm this at the same time.
   @Binding var isRecording: Bool
@@ -72,8 +80,9 @@ struct KeyRecorderView<Label: View>: View {
   private func handle(_ event: NSEvent) {
     switch event.type {
     case .keyDown:
-      // Plain Escape cancels; anything else records.
-      if event.keyCode == 53,
+      // Plain Escape cancels, unless Escape is a key this recorder is
+      // meant to capture.
+      if !allowsEscape, event.keyCode == 53,
        event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
         cancelRecording()
         return

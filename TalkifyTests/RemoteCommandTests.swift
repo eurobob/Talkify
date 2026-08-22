@@ -238,3 +238,29 @@ struct UnrecordedBindingTests {
     #expect(KeyBinding.unrecorded.modifierFlags == 0)
   }
 }
+
+/// Apple's transcriber turns spoken punctuation into characters by itself,
+/// so the verb is often not followed by a space. A rule wanting "type "
+/// matched none of these.
+struct TypedTextTranscriptionTests {
+  @Test func theVerbNeedsNoSpaceAfterIt() {
+    #expect(RemoteCommandParser.command(from: "Type/model") == .type("/model"))
+    #expect(RemoteCommandParser.command(from: "type/clear") == .type("/clear"))
+    #expect(RemoteCommandParser.command(from: "Type-v") == .type("-v"))
+  }
+
+  /// A letter or digit after the verb means it is part of a longer word,
+  /// not a command.
+  @Test func aLongerWordIsNotTheVerb() {
+    #expect(RemoteCommandParser.command(from: "typewriter") == nil)
+    #expect(RemoteCommandParser.command(from: "types") == nil)
+    #expect(RemoteCommandParser.command(from: "type2") == nil)
+  }
+
+  /// Both spellings have to work: the transcriber converts some spoken
+  /// punctuation and leaves other words alone.
+  @Test func spokenAndConvertedPunctuationBothWork() {
+    #expect(RemoteCommandParser.command(from: "type slash model") == .type("/model"))
+    #expect(RemoteCommandParser.command(from: "Type/model") == .type("/model"))
+  }
+}

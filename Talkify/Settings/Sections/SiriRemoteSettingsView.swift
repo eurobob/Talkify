@@ -191,13 +191,17 @@ struct SiriRemoteSettingsView: View {
       SettingsRow(
         title: "  Keys",
         description: recordingButton == button
-          ? "Press the combination you want this button to send."
+          ? "Press the combination you want this button to send. Click again to cancel."
           : "The combination this button presses."
       ) {
         KeyRecorderView(
           keyBinding: keysBinding(for: button),
           // A bare modifier has nothing to press, so it cannot be sent.
           allowsBareModifier: false,
+          // Escape is one of the most useful keys a remote can send: it is
+          // what interrupts a command-line tool. Click the control again
+          // to cancel instead.
+          allowsEscape: true,
           isRecording: recordingBinding(for: button),
           onRecordingChanged: { settings.isRecordingKeybind = $0 },
           label: { binding, isArmed in

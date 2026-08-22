@@ -195,13 +195,25 @@ enum RemoteCommandParser {
   /// "type hello world", "type slash model". Everything after the verb is
   /// the text, taken from the transcript as spoken.
   ///
-  /// A symbol word attaches to what follows it, so "slash model" is
-  /// "/model" rather than "/ model": a slash command with a space in it is
-  /// not a slash command.
+  /// The verb is not always followed by a space. Apple's transcriber turns
+  /// spoken punctuation into characters on its own, so "type slash model"
+  /// arrives as "Type/model" — and a rule that wanted "type " matched
+  /// nothing at all. Anything that is not a letter or a digit ends the
+  /// verb, which also keeps "typewriter" from being a command.
+  ///
+  /// The symbol table below still applies, for the words the transcriber
+  /// leaves alone. A symbol attaches to what follows it, because a slash
+  /// command with a space in it is not a slash command.
   private static func typedText(in transcript: String) -> String? {
     let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
     let lowered = trimmed.lowercased()
-    guard lowered == "type" || lowered.hasPrefix("type ") else { return nil }
+    guard lowered.hasPrefix("type") else { return nil }
+
+    let afterVerb = lowered.index(lowered.startIndex, offsetBy: 4)
+    if afterVerb < lowered.endIndex {
+      let next = lowered[afterVerb]
+      guard !next.isLetter, !next.isNumber else { return nil }
+    }
 
     let rest = trimmed.dropFirst("type".count).trimmingCharacters(in: .whitespaces)
     guard !rest.isEmpty else { return nil }
