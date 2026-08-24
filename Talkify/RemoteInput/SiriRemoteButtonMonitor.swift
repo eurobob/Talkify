@@ -121,6 +121,18 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
   /// device objects for the same seven interfaces and every one of them
   /// must be registered again.
   private var openDevices: [IOHIDDevice] = []
+  /// Retries devices that would not open.
+  ///
+  /// The usual reason is that another app has seized the buttons —
+  /// BetterTouchTool does, and it starts at login like this app, so which
+  /// one wins is a race. Without a retry the loser stays blind until it is
+  /// relaunched, so quitting the other app appears to fix nothing and the
+  /// remote looks unreliable rather than contended.
+  private var retryTimer: DispatchSourceTimer?
+  private static let retryInterval: DispatchTimeInterval = .seconds(3)
+  /// True once the buttons have been reported as taken, so reclaiming them
+  /// is logged as the event it is rather than in silence.
+  private var hasReportedSeizure = false
   /// Which buttons are down, so a repeated report cannot open a second
   /// session under the first one.
   private var heldButtons: Set<Button> = []
@@ -179,6 +191,7 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
       CFRunLoopMode.commonModes.rawValue
     )
     stateLock.withLock { self.manager = manager }
+    startRetrying()
 
     let devices = (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>) ?? []
     guard !devices.isEmpty else {
@@ -203,7 +216,43 @@ final class SiriRemoteButtonMonitor: @unchecked Sendable {
     }
   }
 
+  /// Keeps trying to open anything that is matched but not yet open, so
+  /// the buttons are picked up within seconds of whatever held them
+  /// letting go.
+  private func startRetrying() {
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + Self.retryInterval, repeating: Self.retryInterval)
+    timer.setEventHandler { [weak self] in
+      guard let self else { return }
+      let manager = stateLock.withLock { self.manager }
+      guard let manager else { return }
+
+      for device in (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>) ?? [] {
+        let alreadyOpen = stateLock.withLock {
+          openDevices.contains { $0 === device }
+        }
+        guard !alreadyOpen else { continue }
+
+        let result = register(device)
+        guard isButtonInterface(device) else { continue }
+
+        if result == kIOReturnSuccess, hasReportedSeizure {
+          hasReportedSeizure = false
+          RemoteInputLog.logger.info("buttons reclaimed")
+        } else if result == kIOReturnExclusiveAccess, !hasReportedSeizure {
+          hasReportedSeizure = true
+          RemoteInputLog.logger.error("buttons seized by another app")
+        }
+      }
+    }
+    timer.resume()
+    retryTimer = timer
+  }
+
   func stop() {
+    retryTimer?.cancel()
+    retryTimer = nil
+
     let (manager, devices) = stateLock.withLock { () -> (IOHIDManager?, [IOHIDDevice]) in
       let current = self.manager
       let open = openDevices

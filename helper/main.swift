@@ -17,8 +17,18 @@ let packetLoggerPaths = [
   "/Users/rob/Library/Application Support/GoatRemote/Additional Tools/Hardware/PacketLogger.app/Contents/Resources/packetlogger",
 ]
 
+/// Timestamped, because the whole point of this log is to be lined up
+/// against the app's: "the helper decoded audio" and "the app received a
+/// session" are only useful together.
+let logFormatter: DateFormatter = {
+  let formatter = DateFormatter()
+  formatter.dateFormat = "HH:mm:ss.SSS"
+  return formatter
+}()
+
 func log(_ message: String) {
-  FileHandle.standardError.write(Data("talkify-remote-voiced: \(message)\n".utf8))
+  let stamp = logFormatter.string(from: Date())
+  FileHandle.standardError.write(Data("[\(stamp)] talkify-remote-voiced: \(message)\n".utf8))
 }
 
 guard let packetLogger = packetLoggerPaths.first(where: {
@@ -76,6 +86,14 @@ func broadcast(_ samples: [Int16]) {
       }
     }
   }
+}
+
+var decodedSinceStart = 0
+
+func clientCount() -> Int {
+  clientsLock.lock()
+  defer { clientsLock.unlock() }
+  return clients.count
 }
 
 func hasClients() -> Bool {
@@ -144,9 +162,14 @@ func capture() {
 
       for event in stream.accept(packet: packet) {
         switch event {
-        case .began: log("voice started")
-        case .ended: log("voice ended")
-        case let .samples(pcm): broadcast(pcm)
+        case .began:
+          decodedSinceStart = 0
+          log("voice started, \(clientCount()) client(s) listening")
+        case .ended:
+          log("voice ended, decoded \(decodedSinceStart) samples")
+        case let .samples(pcm):
+          broadcast(pcm)
+          decodedSinceStart += pcm.count
         }
       }
     }
@@ -156,9 +179,32 @@ func capture() {
   log("PacketLogger exited")
 }
 
+/// Exits when the binary on disk is no longer the one running.
+///
+/// launchd keeps running whatever it started, so rebuilding the app leaves
+/// the old helper serving audio indefinitely — this one had been running
+/// five days and none of the changes made in between had ever executed.
+/// That is invisible: it works, just not as the version anybody is
+/// reading. Exiting lets KeepAlive start the new one.
+func binaryHasChanged(since stamp: Date?) -> Bool {
+  guard let stamp else { return false }
+  let path = CommandLine.arguments[0]
+  let current = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+  guard let current else { return false }
+  return abs(current.timeIntervalSince(stamp)) > 1
+}
+
+let ownBinaryStamp = (try? FileManager.default.attributesOfItem(
+  atPath: CommandLine.arguments[0]
+))?[.modificationDate] as? Date
+
 // Capture only while something is listening, and restart it if the
 // Bluetooth stack takes it down.
 while true {
+  if binaryHasChanged(since: ownBinaryStamp) {
+    log("a newer helper has been installed; exiting so launchd starts it")
+    exit(0)
+  }
   if hasClients() {
     capture()
   }

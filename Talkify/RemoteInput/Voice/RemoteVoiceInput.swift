@@ -1,6 +1,7 @@
 import AVFAudio
 import Accelerate
 import Foundation
+import OSLog
 import Speech
 
 /// Feeds a dictation session from the Siri Remote's microphone.
@@ -40,6 +41,11 @@ final class RemoteVoiceInput: DictationInput, @unchecked Sendable {
   private let stateLock = NSLock()
 
   private var client: RemoteVoiceClient?
+  /// Samples handed to the analyzer this session, logged when the session
+  /// ends. This is the boundary between the helper and the transcriber,
+  /// and neither side could see across it: the helper reported decoding
+  /// audio and the app reported a clean session, while no text appeared.
+  private var samplesReceived = 0
   private var converter: AVAudioConverter?
   private var outputFormat: AVAudioFormat?
 
@@ -66,6 +72,7 @@ final class RemoteVoiceInput: DictationInput, @unchecked Sendable {
       self.outputFormat = outputFormat
     }
 
+    samplesReceived = 0
     let client = RemoteVoiceClient { [weak self] samples in
       self?.receive(samples)
     }
@@ -82,10 +89,16 @@ final class RemoteVoiceInput: DictationInput, @unchecked Sendable {
       return current
     }
     client?.stop()
+
+    let seconds = Double(samplesReceived) / 16_000
+    RemoteInputLog.logger.info(
+      "remote session received \(self.samplesReceived) samples (\(String(format: "%.2f", seconds))s)"
+    )
   }
 
   private func receive(_ samples: [Int16]) {
     guard !samples.isEmpty else { return }
+    stateLock.withLock { samplesReceived += samples.count }
 
     let (converter, outputFormat) = stateLock.withLock {
       (self.converter, self.outputFormat)
