@@ -35,6 +35,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
  
  
 
+  /// Ends this launch if a copy is already running.
+  ///
+  /// Two copies fight over the remote: the first opens its buttons and the
+  /// second finds them held, then reports that another app has taken them
+  /// — true, and completely misleading, because the other app is Talkify.
+  /// It happens easily now the app is a login item and can also be started
+  /// by hand or by a build.
+  ///
+  /// The older process wins: it is the one already holding the devices.
+  private static func quitIfAlreadyRunning() -> Bool {
+    guard let identifier = Bundle.main.bundleIdentifier else { return false }
+    let ourselves = ProcessInfo.processInfo.processIdentifier
+    let others = NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+      .filter { $0.processIdentifier != ourselves }
+
+    guard let older = others.min(by: {
+      ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast)
+    }) else { return false }
+
+    RemoteInputLog.logger.info(
+      "another copy is already running (pid \(older.processIdentifier)); quitting this one"
+    )
+    NSApp.terminate(nil)
+    return true
+  }
+
   /// True while this process hosts the test suite rather than a user.
   ///
   /// The live launch path requests microphone and speech permissions and
@@ -52,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     guard !Self.isHostingTests else { return }
+    guard !Self.quitIfAlreadyRunning() else { return }
 
     // Before anything can be staged: a crash or a force-quit while a
     // transcript card was on screen leaves the user's speech in cleartext
@@ -352,7 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case .permissionDenied:
       "Talkify needs Input Monitoring for the Siri Remote"
     case .buttonsHeldByAnotherApp:
-      "Another app holds the Siri Remote's buttons"
+      "Another app holds the remote's buttons — quit BetterTouchTool or GoatRemote"
     case .noRemoteFound:
       "No Siri Remote found — wake it and try again"
     }

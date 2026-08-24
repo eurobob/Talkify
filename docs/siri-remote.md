@@ -162,6 +162,13 @@ To watch a press travel through the app:
 Each press should produce a button line, a routing line, and an action
 line. Whichever is missing names the layer at fault.
 
+**Only one copy of Talkify may run.** Two fight over the remote: the first
+opens the buttons, the second finds them held and reports that *another
+app* has taken them — true, and thoroughly misleading, because the other
+app is Talkify. A second launch now quits itself and lets the older process
+keep the devices. It happens easily, because the app is a login item and
+can also be started by hand or by a build.
+
 **Only one app may hold the buttons.** BetterTouchTool and the GoatRemote
 app both seize the button interface, and while either holds it every other
 app sees nothing. `opencheck` in the spike folder says whether it is free.
