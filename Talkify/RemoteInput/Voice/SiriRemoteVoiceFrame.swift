@@ -7,10 +7,35 @@ import Foundation
 /// 2026-08-20: 366 notifications, every one of them 99 bytes, and libopus
 /// accepted all 363 that carried audio without a single error.
 enum SiriRemoteVoice {
-  /// The remote sends its audio on this handle and its microphone button
-  /// on the other. Both are fixed for the A2854.
-  static let audioHandle: UInt16 = 0x0035
-  static let buttonHandle: UInt16 = 0x0039
+  /// The handles seen on an A2854. They are a starting point, not a rule:
+  /// GATT attribute handles belong to a connection, and this remote
+  /// reconnects hundreds of times a day. GoatRemote's own binary carries
+  /// the string "A2854 handle was not detected dynamically", which is the
+  /// same lesson learned the same way.
+  static let expectedAudioHandle: UInt16 = 0x0035
+  static let expectedButtonHandle: UInt16 = 0x0039
+
+  /// Whether a notification value looks like a frame of this remote's
+  /// voice stream.
+  ///
+  /// Recognising the shape rather than trusting a handle is what lets the
+  /// stream be found again after the handle moves. The test is strict on
+  /// purpose: a length that fits exactly, and an Opus table-of-contents
+  /// byte that says what this remote always says — CELT wideband, 20 ms,
+  /// one frame, mono.
+  static func looksLikeVoiceFrame(_ value: [UInt8]) -> Bool {
+    guard let frame = frame(from: value), !frame.endsStream else { return false }
+    return frame.opus.first == expectedTOC
+  }
+
+  /// CELT wideband, 20 ms, mono, one frame per packet — 16 kHz, which is
+  /// why the decoder is built at 16 kHz.
+  static let expectedTOC: UInt8 = 0xB8
+
+  /// Whether a value looks like the microphone button reporting itself.
+  static func looksLikeButtonReport(_ value: [UInt8]) -> Bool {
+    value.count == 2 && (value[0] == buttonPressedValue || value[0] == 0)
+  }
 
   /// The value the button handle carries while the microphone button is
   /// held. It reads `00 00` on release.

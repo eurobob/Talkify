@@ -260,7 +260,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Attempted even when the status reads "missing": that status is
     // reported for several unrelated reasons, and the error from an actual
     // attempt names the real one.
-    guard state != .installed, state != .awaitingApproval else { return }
+    guard state != .installed, state != .awaitingApproval else {
+      // Installed, but possibly an older build than this app carries.
+      VoiceHelperInstaller.reinstallIfOutdated()
+      return
+    }
     if case let .failure(error) = VoiceHelperInstaller.install() {
       RemoteInputLog.logger.error(
         "voice helper install failed: \(String(describing: error), privacy: .public)"

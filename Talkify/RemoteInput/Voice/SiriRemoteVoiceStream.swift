@@ -20,6 +20,13 @@ final class SiriRemoteVoiceStream {
 
   private let decoder: OpusDecoder
   private var reassembler = BluetoothTrace.Reassembler()
+  /// The handles this connection is actually using, learned from what
+  /// arrives. A hardcoded handle works until the remote reconnects onto a
+  /// different one, and then the stream goes silent with everything else
+  /// apparently healthy: the capture runs, the app connects, and no audio
+  /// is ever decoded.
+  private var audioHandle: UInt16?
+  private var buttonHandle: UInt16?
   private var lastSequence: UInt16?
   private var isSpeaking = false
 
@@ -38,15 +45,29 @@ final class SiriRemoteVoiceStream {
           let notification = BluetoothTrace.notification(fromL2CAP: l2cap)
     else { return [] }
 
-    switch notification.handle {
-    case SiriRemoteVoice.buttonHandle:
-      return button(pressed: SiriRemoteVoice.isButtonPressed(notification.value))
-    case SiriRemoteVoice.audioHandle:
+    // Learned by shape, not assumed by number.
+    if notification.handle == audioHandle
+      || SiriRemoteVoice.looksLikeVoiceFrame(notification.value) {
+      if audioHandle != notification.handle {
+        audioHandle = notification.handle
+      }
       return audio(value: notification.value)
-    default:
-      return []
     }
+
+    if notification.handle == buttonHandle
+      || SiriRemoteVoice.looksLikeButtonReport(notification.value) {
+      if buttonHandle != notification.handle {
+        buttonHandle = notification.handle
+      }
+      return button(pressed: SiriRemoteVoice.isButtonPressed(notification.value))
+    }
+
+    return []
   }
+
+  /// The handles in use, for logging. Nil until something has arrived on
+  /// them.
+  var learnedHandles: (audio: UInt16?, button: UInt16?) { (audioHandle, buttonHandle) }
 
   private func button(pressed: Bool) -> [Event] {
     if pressed {

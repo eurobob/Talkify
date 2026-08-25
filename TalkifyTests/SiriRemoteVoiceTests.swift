@@ -46,6 +46,40 @@ struct SiriRemoteVoiceTests {
     #expect(BluetoothTrace.packet(fromTraceLine: "not a trace line at all") == nil)
   }
 
+  /// The handle is learned from the shape of what arrives, not assumed.
+  /// GATT handles belong to a connection and this remote reconnects
+  /// hundreds of times a day; a hardcoded one works until it moves, and
+  /// then the stream goes silent while everything else looks healthy.
+  @Test func aVoiceFrameIsRecognisedOnAnyHandle() {
+    var reassembler = BluetoothTrace.Reassembler()
+    _ = reassembler.accept(BluetoothTrace.packet(fromTraceLine: voiceStartLine)!)
+    let notification = reassembler
+      .accept(BluetoothTrace.packet(fromTraceLine: voiceContinuationLine)!)
+      .flatMap(BluetoothTrace.notification(fromL2CAP:))!
+
+    #expect(SiriRemoteVoice.looksLikeVoiceFrame(notification.value))
+    #expect(!SiriRemoteVoice.looksLikeButtonReport(notification.value))
+  }
+
+  @Test func aButtonReportIsRecognisedByItsShape() {
+    #expect(SiriRemoteVoice.looksLikeButtonReport([0x20, 0x00]))
+    #expect(SiriRemoteVoice.looksLikeButtonReport([0x00, 0x00]))
+    #expect(!SiriRemoteVoice.looksLikeButtonReport([0x20]))
+    #expect(!SiriRemoteVoice.looksLikeButtonReport([0x20, 0x00, 0x00]))
+  }
+
+  /// Anything that is not this remote's voice must not be mistaken for it,
+  /// or a battery notification would be decoded as audio.
+  @Test func otherNotificationsAreNotVoice() {
+    #expect(!SiriRemoteVoice.looksLikeVoiceFrame([0x46]))
+    #expect(!SiriRemoteVoice.looksLikeVoiceFrame([]))
+    // Right shape, wrong codec byte.
+    var wrongTOC: [UInt8] = [0x00, 0x00, 0x01, 0x00, 0x02, 0x11, 0x22]
+    #expect(!SiriRemoteVoice.looksLikeVoiceFrame(wrongTOC))
+    wrongTOC[5] = SiriRemoteVoice.expectedTOC
+    #expect(SiriRemoteVoice.looksLikeVoiceFrame(wrongTOC))
+  }
+
   @Test func aButtonPressArrivesInOneFragment() {
     var reassembler = BluetoothTrace.Reassembler()
     let packet = BluetoothTrace.packet(fromTraceLine: buttonPressLine)!
@@ -53,7 +87,7 @@ struct SiriRemoteVoiceTests {
     let l2cap = reassembler.accept(packet)
     let notification = l2cap.flatMap(BluetoothTrace.notification(fromL2CAP:))
 
-    #expect(notification?.handle == SiriRemoteVoice.buttonHandle)
+    #expect(notification?.handle == SiriRemoteVoice.expectedButtonHandle)
     #expect(notification.map { SiriRemoteVoice.isButtonPressed($0.value) } == true)
   }
 
@@ -63,7 +97,7 @@ struct SiriRemoteVoiceTests {
     let notification = reassembler.accept(packet)
       .flatMap(BluetoothTrace.notification(fromL2CAP:))
 
-    #expect(notification?.handle == SiriRemoteVoice.buttonHandle)
+    #expect(notification?.handle == SiriRemoteVoice.expectedButtonHandle)
     #expect(notification.map { SiriRemoteVoice.isButtonPressed($0.value) } == false)
   }
 
@@ -81,7 +115,7 @@ struct SiriRemoteVoiceTests {
     let l2cap = reassembler.accept(continuation)
     let notification = l2cap.flatMap(BluetoothTrace.notification(fromL2CAP:))
 
-    #expect(notification?.handle == SiriRemoteVoice.audioHandle)
+    #expect(notification?.handle == SiriRemoteVoice.expectedAudioHandle)
     #expect(notification?.value.count == 99)
   }
 

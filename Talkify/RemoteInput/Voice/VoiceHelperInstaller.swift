@@ -43,6 +43,56 @@ enum VoiceHelperInstaller {
     SMAppService.daemon(plistName: plistName)
   }
 
+  /// Where the last installed helper's build date is remembered.
+  private static let installedStampKey = "voiceHelperInstalledStamp"
+
+  /// The helper inside this app bundle, and when it was built.
+  private static var bundledHelperDate: Date? {
+    guard let executable = Bundle.main.executableURL?.deletingLastPathComponent()
+      .appendingPathComponent("talkify-remote-voiced")
+    else { return nil }
+    return (try? FileManager.default.attributesOfItem(atPath: executable.path))?[.modificationDate] as? Date
+  }
+
+  /// Reinstalls the daemon when the app carries a newer helper than the one
+  /// that was installed.
+  ///
+  /// launchd keeps running whatever it started, so a rebuilt app leaves the
+  /// old helper serving audio indefinitely — five days, on the machine this
+  /// was found on, with every change in between never executing. Nothing
+  /// looks wrong: the daemon is loaded, its socket answers, and the audio
+  /// it decodes is the old build's idea of the protocol.
+  ///
+  /// Re-registering needs no password, which is the point: the alternative
+  /// is asking the user to run launchctl as root after every update.
+  static func reinstallIfOutdated() {
+    guard let built = bundledHelperDate else { return }
+
+    let defaults = UserDefaults.standard
+    let installed = defaults.object(forKey: installedStampKey) as? Date
+    guard installed == nil || abs(built.timeIntervalSince(installed!)) > 1 else { return }
+
+    RemoteInputLog.logger.info("installing a newer voice helper")
+    try? service.unregister()
+
+    // Registering immediately after unregistering is refused: the teardown
+    // has not finished, and the failure reads as "Operation not permitted",
+    // which sends you looking at entitlements rather than at timing.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+      do {
+        try service.register()
+        defaults.set(built, forKey: installedStampKey)
+        RemoteInputLog.logger.info("voice helper updated")
+      } catch {
+        // Not fatal: the service is unregistered, so the next launch takes
+        // the ordinary install path and succeeds there.
+        RemoteInputLog.logger.error(
+          "voice helper will install on next launch: \(error.localizedDescription, privacy: .public)"
+        )
+      }
+    }
+  }
+
   static var state: State {
     switch service.status {
     case .enabled: .installed
@@ -60,6 +110,9 @@ enum VoiceHelperInstaller {
   static func install() -> Result<State, Error> {
     do {
       try service.register()
+      if let built = bundledHelperDate {
+        UserDefaults.standard.set(built, forKey: installedStampKey)
+      }
       RemoteInputLog.logger.info("voice helper registered: \(state.title, privacy: .public)")
       return .success(state)
     } catch {
