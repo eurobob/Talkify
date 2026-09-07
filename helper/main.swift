@@ -118,6 +118,37 @@ Thread.detachNewThread {
   }
 }
 
+/// Kills any PacketLogger this helper did not start.
+///
+/// Only one live Bluetooth trace is useful: a second one competes for the
+/// same stream and ours is starved, so audio is decoded by nobody while
+/// everything reports healthy. Orphans are easy to create — launchd kills
+/// this daemon outright for a signature problem, and its PacketLogger
+/// child survives with nothing to stop it.
+func killStrayPacketLoggers(except ours: pid_t?) {
+  let listing = Process()
+  listing.executableURL = URL(fileURLWithPath: "/bin/ps")
+  listing.arguments = ["-axo", "pid=,command="]
+  let pipe = Pipe()
+  listing.standardOutput = pipe
+  guard (try? listing.run()) != nil else { return }
+
+  // Read before waiting. ps prints more than a pipe buffer holds, so
+  // waiting first deadlocks: ps blocks writing, this blocks waiting, and
+  // the helper never reaches the capture it was about to start.
+  let output = String(
+    decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self
+  )
+  listing.waitUntilExit()
+  for line in output.split(separator: "\n") {
+    guard line.contains("packetlogger") else { continue }
+    let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+    guard let first = fields.first, let pid = pid_t(first), pid != ours else { continue }
+    kill(pid, SIGTERM)
+    log("ended a stray PacketLogger (pid \(pid))")
+  }
+}
+
 /// Runs PacketLogger and feeds every traced packet through the decoder.
 /// Returns when PacketLogger exits, which happens if Bluetooth restarts.
 func capture() {
@@ -139,6 +170,9 @@ func capture() {
   // while decoding nothing at all.
   process.standardError = pipe
   process.standardOutput = pipe
+
+  // Before starting ours: a leftover trace starves it.
+  killStrayPacketLoggers(except: nil)
 
   do { try process.run() } catch {
     log("could not start PacketLogger: \(error)")
