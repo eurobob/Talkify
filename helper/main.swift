@@ -71,6 +71,7 @@ func broadcast(_ samples: [Int16]) {
   clientsLock.lock()
   let current = clients
   clientsLock.unlock()
+  // Nobody listening: the trace keeps running, the samples are dropped.
   guard !current.isEmpty else { return }
 
   samples.withUnsafeBytes { bytes in
@@ -232,15 +233,25 @@ let ownBinaryStamp = (try? FileManager.default.attributesOfItem(
   atPath: CommandLine.arguments[0]
 ))?[.modificationDate] as? Date
 
-// Capture only while something is listening, and restart it if the
-// Bluetooth stack takes it down.
+// Capture continuously, whether or not anybody is listening.
+//
+// Starting the capture when a client connects looked thrifty and could
+// never work: PacketLogger takes about two seconds to begin producing, and
+// by then the user has said their sentence and released the button. The
+// measured order was the app connecting, the session ending with no audio,
+// and the capture starting a tenth of a second after that.
+//
+// The audio has to already be flowing when the button goes down, so the
+// trace runs for the life of the daemon and its samples are dropped when
+// nobody is connected.
+log("capturing continuously; audio must be flowing before the button is pressed")
 while true {
   if binaryHasChanged(since: ownBinaryStamp) {
     log("a newer helper has been installed; exiting so launchd starts it")
     exit(0)
   }
-  if hasClients() {
-    capture()
-  }
+  capture()
+  // Only reached if PacketLogger exited: the Bluetooth stack restarting,
+  // usually. Pause briefly rather than spinning on a failure.
   Thread.sleep(forTimeInterval: 2)
 }
